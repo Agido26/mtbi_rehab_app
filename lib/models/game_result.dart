@@ -1,7 +1,9 @@
 enum GameType {
   cupShuffle('Cup Shuffle', 'Train visual attention and memory'),
   visualScanning('Visual Scanning', 'Improve visual scanning speed'),
-  spatialMemory('Spatial Memory', 'Enhance working memory');
+  spatialMemory('Spatial Memory', 'Enhance working memory'),
+  shapeMatch(
+      'Shape Match', 'Pattern recognition and visual attention'); // ADD THIS
 
   final String displayName;
   final String description;
@@ -31,6 +33,32 @@ class GameResult {
     required this.playedAt,
     this.metadata,
   });
+
+  // Add this method to GameResult class:
+
+  GameResult copyWith({
+    String? id,
+    String? patientId,
+    GameType? gameType,
+    int? score,
+    int? totalAttempts,
+    int? correctAttempts,
+    int? durationSeconds,
+    DateTime? playedAt,
+    Map<String, dynamic>? metadata,
+  }) {
+    return GameResult(
+      id: id ?? this.id,
+      patientId: patientId ?? this.patientId,
+      gameType: gameType ?? this.gameType,
+      score: score ?? this.score,
+      totalAttempts: totalAttempts ?? this.totalAttempts,
+      correctAttempts: correctAttempts ?? this.correctAttempts,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      playedAt: playedAt ?? this.playedAt,
+      metadata: metadata ?? this.metadata,
+    );
+  }
 
   double get accuracy =>
       totalAttempts > 0 ? correctAttempts / totalAttempts : 0;
