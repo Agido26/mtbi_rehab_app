@@ -26,9 +26,9 @@ class ShapeMatchGame extends StatefulWidget {
 class _ShapeMatchGameState extends State<ShapeMatchGame> {
   late final ShapeMatchConfig _config;
   late final GameSession _session;
-  late final List<ShapeType> _shapes;
-  late final List<Color> _colors;
-  late final List<bool> _matched;
+  late final List<GameShape> _shapes; // CHANGED: GameShape not ShapeType
+  final Set<String> _matchedShapeIds =
+      {}; // Tracks which shape IDs are already placed
 
   Timer? _timer;
   int _remainingTime = 0;
@@ -44,9 +44,6 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     super.initState();
     _config = ShapeMatchConfig.forDifficulty(widget.difficulty);
     _shapes = List.from(_config.shapes);
-    _colors = List.from(_config.colors);
-    _matched = List.filled(
-        _config.shapes.length, false); // FIXED: .length instead of .shapeCount
     _remainingTime = _config.timeLimitSeconds;
 
     _shapes.shuffle();
@@ -55,7 +52,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     _session = GameSession(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       patientId: patient.id,
-      gameType: GameType.shapeMatch, // FIXED: use shapeMatch
+      gameType: GameType.shapeMatch,
       startedAt: DateTime.now(),
     );
 
@@ -76,12 +73,9 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isPaused || _gameOver) return;
-
       setState(() {
         _remainingTime--;
-        if (_remainingTime <= 0) {
-          _endGame(false);
-        }
+        if (_remainingTime <= 0) _endGame(false);
       });
     });
   }
@@ -89,7 +83,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   void _onWrongAttempt() {
     setState(() {
       _wrongAttempts++;
-      _matched = List.filled(_config.shapes.length, false); // FIXED
+      _matchedShapeIds.clear(); // Reset ALL shapes back
 
       if (_wrongAttempts >= _config.maxWrongAttempts) {
         _endGame(false);
@@ -99,9 +93,10 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
 
   void _onCorrectMatch(int index) {
     setState(() {
-      _matched[index] = true;
+      _matchedShapeIds
+          .add(_config.shapes[index].id); // Mark this target's shape as placed
 
-      if (_matched.every((m) => m)) {
+      if (_matchedShapeIds.length == _config.shapes.length) {
         _endGame(true);
       }
     });
@@ -116,8 +111,8 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           ? (_remainingTime * 10 +
               (_config.maxWrongAttempts - _wrongAttempts) * 5)
           : 0
-      ..totalAttempts = _wrongAttempts + _matched.where((m) => m).length
-      ..correctAttempts = _matched.where((m) => m).length
+      ..totalAttempts = _wrongAttempts + _matchedShapeIds.length
+      ..correctAttempts = _matchedShapeIds.length
       ..durationSeconds = _config.timeLimitSeconds - _remainingTime;
 
     _session.endSession();
@@ -133,7 +128,6 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     );
 
     GameDataService().saveResult(result);
-
     _showGameOverDialog(won);
   }
 
@@ -142,10 +136,8 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: Text(
-          won ? '🎉 Level Complete!' : '⏰ Time\'s Up!',
-          textAlign: TextAlign.center,
-        ),
+        title: Text(won ? '🎉 Level Complete!' : '⏰ Time\'s Up!',
+            textAlign: TextAlign.center),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -183,7 +175,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   void _restartGame() {
     setState(() {
       _shapes.shuffle();
-      _matched = List.filled(_config.shapes.length, false); // FIXED
+      _matchedShapeIds.clear(); // FIXED: clear the set
       _wrongAttempts = 0;
       _hintsUsed = 0;
       _gameOver = false;
@@ -255,8 +247,8 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
             remainingTime: _remainingTime,
             wrongAttempts: _wrongAttempts,
             maxWrongAttempts: _config.maxWrongAttempts,
-            matchedCount: _matched.where((m) => m).length,
-            totalShapes: _config.shapes.length, // FIXED
+            matchedCount: _matchedShapeIds.length,
+            totalShapes: _config.shapes.length,
             onPause: _togglePause,
             onHint: _useHint,
           ),
@@ -270,22 +262,25 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
-
         final targetY = height * 0.2;
         final shapeY = height * 0.65;
-        final spacing = width / (_config.shapes.length + 1); // FIXED
+        final spacing = width / (_config.shapes.length + 1);
 
         return Stack(
           key: _dragAreaKey,
           children: [
-            for (int i = 0; i < _config.shapes.length; i++) // FIXED
+            // Targets (top row) — always show, highlight if already filled
+            for (int i = 0; i < _config.shapes.length; i++)
               Positioned(
                 left: spacing * (i + 1) - 40,
                 top: targetY,
                 child: _buildTarget(i, _config.shapes[i]),
               ),
-            for (int i = 0; i < _config.shapes.length; i++) // FIXED
-              if (!_matched[i])
+
+            // Draggables (bottom row) — ONLY show if not yet matched
+            for (int i = 0; i < _shapes.length; i++)
+              if (!_matchedShapeIds
+                  .contains(_shapes[i].id)) // FIXED: check by ID
                 Positioned(
                   left: spacing * (i + 1) - 40,
                   top: shapeY,
@@ -297,11 +292,16 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     );
   }
 
-  Widget _buildTarget(int index, ShapeType shapeType) {
-    return DragTarget<int>(
-      onWillAcceptWithDetails: (details) => details.data == index,
+  Widget _buildTarget(int index, GameShape expectedShape) {
+    final isAlreadyFilled = _matchedShapeIds.contains(expectedShape.id);
+
+    return DragTarget<GameShape>(
+      onWillAcceptWithDetails: (details) =>
+          !isAlreadyFilled &&
+          details.data.id ==
+              expectedShape.id, // FIXED: reject if already filled
       onAcceptWithDetails: (details) {
-        if (details.data == index) {
+        if (details.data.id == expectedShape.id) {
           _onCorrectMatch(index);
         } else {
           _onWrongAttempt();
@@ -313,41 +313,49 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: isHighlighted
-                ? Colors.green.withOpacity(0.3)
-                : Colors.transparent,
+            color: isAlreadyFilled
+                ? Colors.green.withOpacity(0.5) // Show filled state
+                : (isHighlighted
+                    ? Colors.green.withOpacity(0.3)
+                    : Colors.transparent),
             border: Border.all(
-              color: isHighlighted ? Colors.green : Colors.white70,
+              color: isAlreadyFilled
+                  ? Colors.green
+                  : (isHighlighted ? Colors.green : Colors.white70),
               width: 2,
             ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: CustomPaint(
-            painter: ShapePainter(
-              type: shapeType,
-              color: Colors.white,
-              isShadow: true,
-              strokeWidth: 2,
-            ),
-          ),
+          child: isAlreadyFilled
+              ? const Icon(Icons.check,
+                  color: Colors.green, size: 40) // Show checkmark
+              : (expectedShape.isCustomImage
+                  ? Image.asset(expectedShape.shadowPath!, fit: BoxFit.contain)
+                  : CustomPaint(
+                      painter: ShapePainter(
+                        type: expectedShape.type!,
+                        color: Colors.white,
+                        isShadow: true,
+                        strokeWidth: 2,
+                      ),
+                    )),
         );
       },
     );
   }
 
   Widget _buildDraggable(int index) {
-    final shapeType = _shapes[index];
-    final color = _colors[index];
+    final shape = _shapes[index];
 
-    return Draggable<int>(
-      data: index,
+    return Draggable<GameShape>(
+      data: shape,
       feedback: Material(
         color: Colors.transparent,
         child: Container(
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.8),
+            color: shape.isCustomImage ? null : shape.color!.withOpacity(0.8),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
@@ -357,12 +365,14 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
               ),
             ],
           ),
-          child: CustomPaint(
-            painter: ShapePainter(
-              type: shapeType,
-              color: Colors.white,
-            ),
-          ),
+          child: shape.isCustomImage
+              ? Image.asset(shape.imagePath!, fit: BoxFit.contain)
+              : CustomPaint(
+                  painter: ShapePainter(
+                    type: shape.type!,
+                    color: Colors.white,
+                  ),
+                ),
         ),
       ),
       childWhenDragging: Container(
@@ -378,7 +388,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
         width: 80,
         height: 80,
         decoration: BoxDecoration(
-          color: color,
+          color: shape.isCustomImage ? null : shape.color,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -388,12 +398,14 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
             ),
           ],
         ),
-        child: CustomPaint(
-          painter: ShapePainter(
-            type: shapeType,
-            color: Colors.white,
-          ),
-        ),
+        child: shape.isCustomImage
+            ? Image.asset(shape.imagePath!, fit: BoxFit.contain)
+            : CustomPaint(
+                painter: ShapePainter(
+                  type: shape.type!,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }

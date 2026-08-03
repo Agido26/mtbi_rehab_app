@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/game_result.dart';
@@ -16,7 +17,7 @@ class StorageService {
 
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'mtbi_rehab.db');
+    final path = join(dbPath, 'mtbi_rehab_v2.db'); // NEW DB NAME to start fresh
 
     return await openDatabase(
       path,
@@ -48,7 +49,9 @@ class StorageService {
       'game_results',
       {
         ...result.toJson(),
-        'metadata': result.metadata != null ? result.metadata.toString() : null,
+        'metadata': result.metadata != null
+            ? jsonEncode(result.metadata)
+            : null, // FIXED: jsonEncode
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -62,7 +65,7 @@ class StorageService {
       whereArgs: [patientId],
       orderBy: 'playedAt DESC',
     );
-    return maps.map((m) => GameResult.fromJson(m)).toList();
+    return maps.map((m) => _parseResult(m)).toList(); // Use helper
   }
 
   Future<List<GameResult>> getResultsForGame(
@@ -76,7 +79,7 @@ class StorageService {
       whereArgs: [patientId, gameType.name],
       orderBy: 'playedAt DESC',
     );
-    return maps.map((m) => GameResult.fromJson(m)).toList();
+    return maps.map((m) => _parseResult(m)).toList();
   }
 
   Future<Map<GameType, List<GameResult>>> getAllResultsByGame(
@@ -90,7 +93,7 @@ class StorageService {
       orderBy: 'playedAt DESC',
     );
 
-    final results = maps.map((m) => GameResult.fromJson(m)).toList();
+    final results = maps.map((m) => _parseResult(m)).toList();
     final grouped = <GameType, List<GameResult>>{};
 
     for (final result in results) {
@@ -98,5 +101,18 @@ class StorageService {
     }
 
     return grouped;
+  }
+
+  // HELPER: Safely parse metadata
+  GameResult _parseResult(Map<String, dynamic> m) {
+    final json = Map<String, dynamic>.from(m);
+    if (json['metadata'] != null && json['metadata'] is String) {
+      try {
+        json['metadata'] = jsonDecode(json['metadata'] as String);
+      } catch (_) {
+        json['metadata'] = null;
+      }
+    }
+    return GameResult.fromJson(json);
   }
 }

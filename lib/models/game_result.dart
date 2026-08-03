@@ -75,10 +75,11 @@ class GameResult {
       correctAttempts: json['correctAttempts'] as int,
       durationSeconds: json['durationSeconds'] as int,
       playedAt: DateTime.parse(json['playedAt'] as String),
-      metadata: json['metadata'] as Map<String, dynamic>?,
+      metadata: json['metadata'] != null
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : null,
     );
   }
-
   Map<String, dynamic> toJson() {
     return {
       'id': id,

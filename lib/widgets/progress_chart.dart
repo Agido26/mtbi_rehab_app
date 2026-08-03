@@ -62,8 +62,9 @@ class ProgressChart extends StatelessWidget {
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
-                    horizontalInterval:
-                        ((maxScore - minScore) / 4).ceilToDouble(),
+                    horizontalInterval: maxScore == minScore
+                        ? 1.0 // Prevent zero when all scores are the same
+                        : ((maxScore - minScore) / 4).ceilToDouble(),
                   ),
                   titlesData: FlTitlesData(
                     leftTitles: AxisTitles(
@@ -131,7 +132,7 @@ class ProgressChart extends StatelessWidget {
                         color: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.1),
+                            .withValues(alpha: 0.1),
                       ),
                     ),
                   ],

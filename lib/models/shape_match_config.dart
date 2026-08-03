@@ -14,17 +14,6 @@ extension DifficultyExt on Difficulty {
     }
   }
 
-  int get shapeCount {
-    switch (this) {
-      case Difficulty.easy:
-        return 3;
-      case Difficulty.medium:
-        return 4;
-      case Difficulty.hard:
-        return 5;
-    }
-  }
-
   int get timeLimitSeconds {
     switch (this) {
       case Difficulty.easy:
@@ -48,6 +37,39 @@ extension DifficultyExt on Difficulty {
   }
 }
 
+/// Defines a shape using either built-in painter OR custom images
+class GameShape {
+  final String id;
+  final String displayName;
+
+  // For built-in painted shapes
+  final ShapeType? type;
+  final Color? color;
+
+  // For custom images
+  final String? imagePath;
+  final String? shadowPath;
+
+  const GameShape.builtIn({
+    required this.id,
+    required this.displayName,
+    required this.type,
+    required this.color,
+  })  : imagePath = null,
+        shadowPath = null;
+
+  const GameShape.custom({
+    required this.id,
+    required this.displayName,
+    required this.imagePath,
+    required this.shadowPath,
+  })  : type = null,
+        color = null;
+
+  bool get isCustomImage => imagePath != null;
+}
+
+/// Built-in shape types (for CustomPaint)
 enum ShapeType {
   circle,
   square,
@@ -61,49 +83,70 @@ enum ShapeType {
   arrow,
 }
 
-extension ShapeTypeExt on ShapeType {
-  String get displayName {
-    return name[0].toUpperCase() + name.substring(1);
-  }
-}
-
 class ShapeMatchConfig {
   final Difficulty difficulty;
-  final List<ShapeType> shapes;
-  final List<Color> colors;
+  final List<GameShape> shapes;
   final int timeLimitSeconds;
   final int maxWrongAttempts;
 
   const ShapeMatchConfig({
     required this.difficulty,
     required this.shapes,
-    required this.colors,
     required this.timeLimitSeconds,
     required this.maxWrongAttempts,
   });
 
   factory ShapeMatchConfig.forDifficulty(Difficulty difficulty) {
-    final allShapes = ShapeType.values;
-    final count = difficulty.shapeCount;
-    final selected = allShapes.sublist(0, count);
+    // CHOOSE YOUR SHAPES HERE:
+    // Option 1: Built-in painted shapes (works immediately)
+    final builtInShapes = [
+      GameShape.builtIn(
+          id: 'circle',
+          displayName: 'Circle',
+          type: ShapeType.circle,
+          color: Colors.red),
+      GameShape.builtIn(
+          id: 'square',
+          displayName: 'Square',
+          type: ShapeType.square,
+          color: Colors.blue),
+      GameShape.builtIn(
+          id: 'triangle',
+          displayName: 'Triangle',
+          type: ShapeType.triangle,
+          color: Colors.green),
+      GameShape.builtIn(
+          id: 'star',
+          displayName: 'Star',
+          type: ShapeType.star,
+          color: Colors.orange),
+      GameShape.builtIn(
+          id: 'heart',
+          displayName: 'Heart',
+          type: ShapeType.heart,
+          color: Colors.pink),
+    ];
 
-    final colors = [
-      Colors.red,
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.teal,
-      Colors.pink,
-      Colors.indigo,
-      Colors.amber,
-      Colors.cyan,
-    ].sublist(0, count);
+    // Option 2: Custom images (uncomment when you have images)
+    /*
+    final customShapes = [
+      GameShape.custom(id: 'circle', displayName: 'Circle', imagePath: 'assets/shapes/circle/shape.png', shadowPath: 'assets/shapes/circle/shadow.png'),
+      GameShape.custom(id: 'star', displayName: 'Star', imagePath: 'assets/shapes/star/shape.png', shadowPath: 'assets/shapes/star/shadow.png'),
+      // Add more...
+    ];
+    */
+
+    final count = difficulty == Difficulty.easy
+        ? 3
+        : difficulty == Difficulty.medium
+            ? 4
+            : 5;
+    final selected = builtInShapes.sublist(0, count);
+    // final selected = customShapes.sublist(0, count); // Use this for custom images
 
     return ShapeMatchConfig(
       difficulty: difficulty,
       shapes: selected,
-      colors: colors,
       timeLimitSeconds: difficulty.timeLimitSeconds,
       maxWrongAttempts: difficulty.maxWrongAttempts,
     );
