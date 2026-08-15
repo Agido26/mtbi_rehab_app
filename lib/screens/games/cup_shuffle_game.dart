@@ -31,7 +31,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   String _statusText = "Loading AR...";
   int _score = 0;
   int _wrongAttempts = 0;
-  int _ballIndex = -1;
+  int _correctAttempts = 0; // FIXED: separate counter for correct guesses
 
   @override
   void initState() {
@@ -97,7 +97,6 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
         case 'gamePlaced':
           setState(() {
             _phase = GamePhase.placed;
-            _ballIndex = payload['ballIndex'] ?? 0;
             _statusText = "Press Shuffle to start!";
           });
           break;
@@ -115,6 +114,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             _statusText = "Tap 'Place Game' to start";
             _score = 0;
             _wrongAttempts = 0;
+            _correctAttempts = 0; // FIXED: reset correct counter
           });
           break;
 
@@ -132,6 +132,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             _phase = GamePhase.revealed;
             if (isCorrect) {
               _score += 10;
+              _correctAttempts++; // FIXED: increment separate counter
               _statusText = "Correct! Ball found! +10 points";
             } else {
               _wrongAttempts++;
@@ -176,14 +177,16 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       _statusText = "Tap 'Place Game' to start";
       _score = 0;
       _wrongAttempts = 0;
+      _correctAttempts = 0; // FIXED: reset correct counter
     });
   }
 
   Future<void> _saveSession() async {
     _session
       ..score = _score
-      ..totalAttempts = _wrongAttempts + (_score > 0 ? 1 : 0)
-      ..correctAttempts = _score > 0 ? 1 : 0
+      ..totalAttempts =
+          _wrongAttempts + _correctAttempts // FIXED: accurate total
+      ..correctAttempts = _correctAttempts // FIXED: actual count, not boolean
       ..durationSeconds =
           DateTime.now().difference(_session.startedAt).inSeconds;
 

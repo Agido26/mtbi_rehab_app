@@ -3,8 +3,8 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cup Shuffle AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cup Shuffle AR - A-Frame</title>
     <style>
         body {
             margin: 0;
@@ -12,155 +12,332 @@
             background: #000;
         }
 
-        #ar-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
-
-        #ui-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        .loading {
-            position: absolute;
+        #loading {
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             color: white;
             font-family: sans-serif;
             font-size: 18px;
+            z-index: 999;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px 30px;
+            border-radius: 15px;
+        }
+
+        #scan-hint {
+            position: fixed;
+            bottom: 80px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: white;
+            font-family: sans-serif;
+            font-size: 16px;
+            z-index: 999;
+            pointer-events: none;
+            text-shadow: 0 1px 3px black;
+            display: none;
         }
     </style>
+
+    <!-- A-Frame -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <!-- MindAR for A-Frame -->
+    <script src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/dist/mindar-image.prod.js"></script>
+    <base target="_blank">
 </head>
 
 <body>
-    <div id="ar-container">
-        <div class="loading" id="loading">Loading AR...</div>
-        <!-- MindAR will inject canvas/video here -->
-    </div>
+    <div id="loading">Loading AR...<br>Please wait</div>
+    <div id="scan-hint">📷 Point camera at the marker</div>
 
-    <!-- Load your MindAR min file -->
-    <script src="./mindar-image.min.js"></script>
-    <!-- Or whatever your file is named -->
+    <!-- A-Frame Scene with MindAR -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+        embedded color-space="sRGB" renderer="antialias: true; alpha: true; colorManagement: true"
+        vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
 
-    <!-- Three.js (usually required by MindAR) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+        <!-- Lighting -->
+        <a-light type="directional" position="1 2 3" intensity="1"></a-light>
+        <a-light type="ambient" intensity="0.6"></a-light>
+
+        <!-- Image Target Anchor -->
+        <a-entity id="targetAnchor" mindar-image-target="targetIndex: 0" position="0 0 0">
+
+            <!-- Cups Container -->
+            <a-entity id="cupsContainer">
+                <!-- 3 Cups -->
+                <a-cone id="cup0" class="cup" cursor="rayOrigin: mouse" color="#ff3333" radius-bottom="0.08"
+                    radius-top="0.08" height="0.12" position="-0.2 0.06 0" data-id="0">
+                </a-cone>
+
+                <a-cone id="cup1" class="cup" cursor="rayOrigin: mouse" color="#33ff33" radius-bottom="0.08"
+                    radius-top="0.08" height="0.12" position="0 0.06 0" data-id="1">
+                </a-cone>
+
+                <a-cone id="cup2" class="cup" cursor="rayOrigin: mouse" color="#3333ff" radius-bottom="0.08"
+                    radius-top="0.08" height="0.12" position="0.2 0.06 0" data-id="2">
+                </a-cone>
+            </a-entity>
+
+            <!-- Ball -->
+            <a-sphere id="ball" color="#ffff00" radius="0.05" position="0 0 0" visible="false">
+            </a-sphere>
+        </a-entity>
+    </a-scene>
 
     <script>
-        // Bridge to Flutter
-        const FlutterApp = {
-            postMessage: function (msg) {
-                if (window.FlutterApp && window.FlutterApp.postMessage) {
-                    window.FlutterApp.postMessage(JSON.stringify(msg));
-                }
-            }
-        };
-
-        // Receive commands from Flutter
+        // ============================================
+        // FLUTTER BRIDGE
+        // ============================================
         window.receiveFromFlutter = function (command, data) {
-            console.log('From Flutter:', command, data);
-
+            console.log('Flutter says:', command, data);
             switch (command) {
-                case 'startGame':
-                    startCupShuffle();
-                    break;
-                case 'shuffle':
-                    performShuffle();
-                    break;
-                case 'reset':
-                    resetGame();
-                    break;
-                case 'reveal':
-                    revealCup(data.index);
-                    break;
+                case 'startGame': startGame(); break;
+                case 'shuffle': startShuffle(); break;
+                case 'reset': resetGame(); break;
+                case 'reveal': revealCup(data.index); break;
             }
         };
 
-        // Send events back to Flutter
         function sendToFlutter(event, data) {
-            FlutterApp.postMessage({ event: event, data: data });
+            if (window.FlutterApp && window.FlutterApp.postMessage) {
+                window.FlutterApp.postMessage(JSON.stringify({ event: event, data: data || {} }));
+            }
         }
 
-        // Game state
+        // ============================================
+        // GAME STATE
+        // ============================================
         let gameState = {
             isReady: false,
             isPlaced: false,
             isShuffling: false,
-            score: 0,
-            ballIndex: -1
+            isRevealed: false,
+            ballIndex: -1,
+            cups: [],
+            ball: null,
+            positions: [-0.2, 0, 0.2]
         };
 
-        // Initialize MindAR here
-        async function initAR() {
-            try {
-                // TODO: Initialize your MindAR instance here
-                // Example:
-                // const mindarThree = new MindARThree({
-                //     container: document.querySelector('#ar-container'),
-                //     imageTargetSrc: './targets.mind'
-                // });
+        // ============================================
+        // WAIT FOR SCENE TO LOAD
+        // ============================================
+        const scene = document.querySelector('a-scene');
+        const targetAnchor = document.querySelector('#targetAnchor');
+        const cups = document.querySelectorAll('.cup');
+        const ball = document.querySelector('#ball');
+        const loadingDiv = document.querySelector('#loading');
+        const scanHint = document.querySelector('#scan-hint');
 
-                document.getElementById('loading').style.display = 'none';
+        scene.addEventListener('loaded', () => {
+            console.log('Scene loaded');
+
+            // Store cup references
+            gameState.cups = Array.from(cups);
+            gameState.ball = ball;
+
+            // AR Ready event from MindAR
+            scene.addEventListener('arReady', () => {
+                console.log('AR Ready');
+                loadingDiv.style.display = 'none';
                 gameState.isReady = true;
                 sendToFlutter('arReady', {});
+            });
 
-            } catch (e) {
-                console.error('AR Init failed:', e);
-                sendToFlutter('arError', { message: e.message });
-            }
-        }
+            // AR Error
+            scene.addEventListener('arError', (e) => {
+                console.error('AR Error:', e.detail);
+                loadingDiv.textContent = 'AR Error: ' + (e.detail.message || 'Unknown');
+                sendToFlutter('arError', { message: e.detail.message });
+            });
+        });
 
-        function startCupShuffle() {
-            // TODO: Place cups in AR scene
+        // ============================================
+        // TARGET EVENTS
+        // ============================================
+        targetAnchor.addEventListener('targetFound', () => {
+            console.log('Target Found');
+            scanHint.style.display = 'none';
+        });
+
+        targetAnchor.addEventListener('targetLost', () => {
+            console.log('Target Lost');
+            scanHint.style.display = 'block';
+        });
+
+        // ============================================
+        // GAME FUNCTIONS
+        // ============================================
+
+        function startGame() {
             gameState.isPlaced = true;
+            gameState.isRevealed = false;
+
+            // Reset cup positions
+            gameState.cups.forEach((cup, i) => {
+                cup.setAttribute('position', `${gameState.positions[i]} 0.06 0`);
+            });
+
+            // Choose random ball position
             gameState.ballIndex = Math.floor(Math.random() * 3);
-            sendToFlutter('gamePlaced', { ballIndex: gameState.ballIndex });
+
+            // Show ball under chosen cup
+            ball.setAttribute('position', `${gameState.positions[gameState.ballIndex]} 0 0`);
+            ball.setAttribute('visible', 'true');
+
+            // Hide ball after 1.2s and start shuffle
+            setTimeout(() => {
+                ball.setAttribute('visible', 'false');
+                sendToFlutter('gamePlaced', { ballIndex: gameState.ballIndex });
+            }, 1200);
         }
 
-        function performShuffle() {
-            if (!gameState.isPlaced || gameState.isShuffling) return;
+        function startShuffle() {
+            if (!gameState.isPlaced || gameState.isShuffling || gameState.isRevealed) return;
             gameState.isShuffling = true;
 
-            // TODO: Animate cup shuffling in MindAR/Three.js
+            let swaps = 0;
+            const maxSwaps = 5;
+
+            function doSwap() {
+                if (swaps >= maxSwaps) {
+                    gameState.isShuffling = false;
+                    sendToFlutter('shuffleComplete', {});
+                    return;
+                }
+
+                // Pick two different cups
+                let a = Math.floor(Math.random() * 3);
+                let b = Math.floor(Math.random() * 3);
+                while (a === b) b = Math.floor(Math.random() * 3);
+
+                // Get current positions
+                const posA = gameState.cups[a].getAttribute('position');
+                const posB = gameState.cups[b].getAttribute('position');
+
+                // Swap positions with animation
+                gameState.cups[a].setAttribute('animation__pos', {
+                    property: 'position',
+                    to: `${posB.x} ${posB.y} ${posB.z}`,
+                    dur: 400,
+                    easing: 'easeInOutQuad'
+                });
+
+                gameState.cups[b].setAttribute('animation__pos', {
+                    property: 'position',
+                    to: `${posA.x} ${posA.y} ${posA.z}`,
+                    dur: 400,
+                    easing: 'easeInOutQuad'
+                });
+
+                // Update positions array
+                [gameState.positions[a], gameState.positions[b]] =
+                    [gameState.positions[b], gameState.positions[a]];
+
+                // Update ball index
+                if (gameState.ballIndex === a) gameState.ballIndex = b;
+                else if (gameState.ballIndex === b) gameState.ballIndex = a;
+
+                swaps++;
+                setTimeout(doSwap, 600); // Wait for animation to finish
+            }
+
+            doSwap();
+        }
+
+        // ============================================
+        // FIXED REVEAL CUP LOGIC
+        // ============================================
+        function revealCup(index) {
+            if (gameState.isShuffling || !gameState.isPlaced || gameState.isRevealed) return;
+            gameState.isRevealed = true;
+
+            const cup = gameState.cups[index];
+            const isCorrect = (index === gameState.ballIndex);
+            const pos = cup.getAttribute('position');
+
+            // Lift the chosen cup
+            cup.setAttribute('animation__lift', {
+                property: 'position',
+                to: `${pos.x} 0.3 ${pos.z}`,
+                dur: 500,
+                easing: 'easeOutQuad'
+            });
 
             setTimeout(() => {
-                gameState.isShuffling = false;
-                sendToFlutter('shuffleComplete', {});
-            }, 2000);
+                if (isCorrect) {
+                    // Show ball under the correct cup
+                    ball.setAttribute('position', `${gameState.positions[gameState.ballIndex]} 0 0`);
+                    ball.setAttribute('visible', 'true');
+                } else {
+                    // Wrong guess: chosen cup is already lifted (empty)
+                    // After 1s, lift correct cup and reveal ball there
+                    setTimeout(() => {
+                        const correctCup = gameState.cups[gameState.ballIndex];
+                        const correctPos = correctCup.getAttribute('position');
+                        correctCup.setAttribute('animation__lift2', {
+                            property: 'position',
+                            to: `${correctPos.x} 0.3 ${correctPos.z}`,
+                            dur: 500,
+                            easing: 'easeOutQuad'
+                        });
+                        ball.setAttribute('position', `${gameState.positions[gameState.ballIndex]} 0 0`);
+                        ball.setAttribute('visible', 'true');
+                    }, 1000);
+                }
+
+                sendToFlutter('cupRevealed', {
+                    index: index,
+                    isCorrect: isCorrect,
+                    ballIndex: gameState.ballIndex
+                });
+            }, 550);
         }
 
         function resetGame() {
-            // TODO: Remove all AR nodes
             gameState.isPlaced = false;
             gameState.isShuffling = false;
+            gameState.isRevealed = false;
+            gameState.ballIndex = -1;
+
+            // Reset cup positions
+            gameState.positions = [-0.2, 0, 0.2];
+            gameState.cups.forEach((cup, i) => {
+                cup.setAttribute('position', `${gameState.positions[i]} 0.06 0`);
+                cup.removeAttribute('animation__lift');
+                cup.removeAttribute('animation__lift2');
+            });
+
+            // Hide ball
+            ball.setAttribute('visible', 'false');
+
             sendToFlutter('gameReset', {});
         }
 
-        function revealCup(index) {
-            // TODO: Lift cup in AR, show ball if correct
-            const isCorrect = index === gameState.ballIndex;
-            sendToFlutter('cupRevealed', {
-                index: index,
-                isCorrect: isCorrect,
-                ballIndex: gameState.ballIndex
+        // ============================================
+        // TAP DETECTION (A-Frame Events)
+        // ============================================
+        cups.forEach(cup => {
+            cup.addEventListener('click', () => {
+                if (!gameState.isPlaced || gameState.isShuffling || gameState.isRevealed) return;
+
+                const cupIndex = parseInt(cup.getAttribute('data-id'));
+                console.log('Cup tapped:', cupIndex);
+                sendToFlutter('cupTapped', { index: cupIndex });
+            });
+        });
+
+        // Fallback: touch/click on canvas
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            canvas.addEventListener('click', (e) => {
+                // A-Frame handles raycasting automatically with cursor component
+                console.log('Canvas clicked at:', e.clientX, e.clientY);
             });
         }
-
-        // Handle cup taps in AR
-        function onCupTapped(cupIndex) {
-            if (gameState.isShuffling || !gameState.isPlaced) return;
-            sendToFlutter('cupTapped', { index: cupIndex });
-        }
-
-        // Start initialization when page loads
-        window.addEventListener('load', initAR);
     </script>
 </body>
 
