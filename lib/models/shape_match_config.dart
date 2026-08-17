@@ -100,27 +100,27 @@ class ShapeMatchConfig {
     // CHOOSE YOUR SHAPES HERE:
     // Option 1: Built-in painted shapes (works immediately)
     final builtInShapes = [
-      GameShape.builtIn(
+      const GameShape.builtIn(
           id: 'circle',
           displayName: 'Circle',
           type: ShapeType.circle,
           color: Colors.red),
-      GameShape.builtIn(
+      const GameShape.builtIn(
           id: 'square',
           displayName: 'Square',
           type: ShapeType.square,
           color: Colors.blue),
-      GameShape.builtIn(
+      const GameShape.builtIn(
           id: 'triangle',
           displayName: 'Triangle',
           type: ShapeType.triangle,
           color: Colors.green),
-      GameShape.builtIn(
+      const GameShape.builtIn(
           id: 'star',
           displayName: 'Star',
           type: ShapeType.star,
           color: Colors.orange),
-      GameShape.builtIn(
+      const GameShape.builtIn(
           id: 'heart',
           displayName: 'Heart',
           type: ShapeType.heart,

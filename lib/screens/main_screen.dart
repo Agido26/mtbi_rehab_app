@@ -6,8 +6,8 @@ import '../widgets/game_card.dart';
 import 'dashboard_screen.dart';
 import 'games/shape_match/shape_match_level_select.dart';
 import 'games/game_2_screen.dart';
-import 'games/game_3_screen.dart';
 import 'login_screen.dart';
+import 'games/cup_shuffle_game.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -73,7 +73,7 @@ class MainScreen extends StatelessWidget {
                         'Welcome back,',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -106,8 +106,7 @@ class MainScreen extends StatelessWidget {
           // Game cards
           GameCard(
             gameType: GameType.cupShuffle,
-            onTap: () =>
-                _navigateToGame(context, const ShapeMatchLevelSelect()),
+            onTap: () => _navigateToGame(context, const CupShuffleGame()),
           ),
           GameCard(
             gameType: GameType.visualScanning,
@@ -115,9 +114,10 @@ class MainScreen extends StatelessWidget {
             isLocked: true,
           ),
           GameCard(
-            gameType: GameType.spatialMemory,
-            onTap: () => _navigateToGame(context, const Game3Screen()),
-            isLocked: true,
+            gameType: GameType.shapeMatch,
+            onTap: () =>
+                _navigateToGame(context, const ShapeMatchLevelSelect()),
+            isLocked: false,
           ),
 
           const Spacer(),

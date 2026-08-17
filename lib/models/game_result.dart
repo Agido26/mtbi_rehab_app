@@ -1,9 +1,10 @@
 enum GameType {
   cupShuffle('Cup Shuffle', 'Train visual attention and memory'),
   visualScanning('Visual Scanning', 'Improve visual scanning speed'),
-  spatialMemory('Spatial Memory', 'Enhance working memory'),
   shapeMatch(
-      'Shape Match', 'Pattern recognition and visual attention'); // ADD THIS
+    'Shape Match',
+    'Pattern recognition and visual attention',
+  ); // ADD THIS
 
   final String displayName;
   final String description;
@@ -67,9 +68,7 @@ class GameResult {
     return GameResult(
       id: json['id'] as String,
       patientId: json['patientId'] as String,
-      gameType: GameType.values.firstWhere(
-        (e) => e.name == json['gameType'],
-      ),
+      gameType: GameType.values.firstWhere((e) => e.name == json['gameType']),
       score: json['score'] as int,
       totalAttempts: json['totalAttempts'] as int,
       correctAttempts: json['correctAttempts'] as int,

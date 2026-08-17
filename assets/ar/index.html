@@ -59,6 +59,11 @@
         embedded color-space="sRGB" renderer="antialias: true; alpha: true; colorManagement: true"
         vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
 
+        <!-- Camera & Cursor Fix -->
+        <a-camera position="0 0 0" look-controls="enabled: false">
+            <a-cursor raycaster="objects: .cup" fuse="false" color="white"></a-cursor>
+        </a-camera>
+
         <!-- Lighting -->
         <a-light type="directional" position="1 2 3" intensity="1"></a-light>
         <a-light type="ambient" intensity="0.6"></a-light>
@@ -69,16 +74,16 @@
             <!-- Cups Container -->
             <a-entity id="cupsContainer">
                 <!-- 3 Cups -->
-                <a-cone id="cup0" class="cup" cursor="rayOrigin: mouse" color="#ff3333" radius-bottom="0.08"
-                    radius-top="0.08" height="0.12" position="-0.2 0.06 0" data-id="0">
+                <a-cone id="cup0" class="cup" color="#ff3333" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                    position="-0.2 0.06 0" data-id="0">
                 </a-cone>
 
-                <a-cone id="cup1" class="cup" cursor="rayOrigin: mouse" color="#33ff33" radius-bottom="0.08"
-                    radius-top="0.08" height="0.12" position="0 0.06 0" data-id="1">
+                <a-cone id="cup1" class="cup" color="#33ff33" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                    position="0 0.06 0" data-id="1">
                 </a-cone>
 
-                <a-cone id="cup2" class="cup" cursor="rayOrigin: mouse" color="#3333ff" radius-bottom="0.08"
-                    radius-top="0.08" height="0.12" position="0.2 0.06 0" data-id="2">
+                <a-cone id="cup2" class="cup" color="#3333ff" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                    position="0.2 0.06 0" data-id="2">
                 </a-cone>
             </a-entity>
 
@@ -90,7 +95,7 @@
 
     <script>
         // ============================================
-        // FLUTTER BRIDGE
+        // FLUTTER BRIDGE (flutter_inappwebview)
         // ============================================
         window.receiveFromFlutter = function (command, data) {
             console.log('Flutter says:', command, data);
@@ -107,7 +112,6 @@
                 window.FlutterApp.postMessage(JSON.stringify({ event: event, data: data || {} }));
             }
         }
-
         // ============================================
         // GAME STATE
         // ============================================
@@ -135,11 +139,9 @@
         scene.addEventListener('loaded', () => {
             console.log('Scene loaded');
 
-            // Store cup references
             gameState.cups = Array.from(cups);
             gameState.ball = ball;
 
-            // AR Ready event from MindAR
             scene.addEventListener('arReady', () => {
                 console.log('AR Ready');
                 loadingDiv.style.display = 'none';
@@ -147,7 +149,6 @@
                 sendToFlutter('arReady', {});
             });
 
-            // AR Error
             scene.addEventListener('arError', (e) => {
                 console.error('AR Error:', e.detail);
                 loadingDiv.textContent = 'AR Error: ' + (e.detail.message || 'Unknown');
@@ -176,19 +177,15 @@
             gameState.isPlaced = true;
             gameState.isRevealed = false;
 
-            // Reset cup positions
             gameState.cups.forEach((cup, i) => {
                 cup.setAttribute('position', `${gameState.positions[i]} 0.06 0`);
             });
 
-            // Choose random ball position
             gameState.ballIndex = Math.floor(Math.random() * 3);
 
-            // Show ball under chosen cup
             ball.setAttribute('position', `${gameState.positions[gameState.ballIndex]} 0 0`);
             ball.setAttribute('visible', 'true');
 
-            // Hide ball after 1.2s and start shuffle
             setTimeout(() => {
                 ball.setAttribute('visible', 'false');
                 sendToFlutter('gamePlaced', { ballIndex: gameState.ballIndex });
@@ -209,16 +206,13 @@
                     return;
                 }
 
-                // Pick two different cups
                 let a = Math.floor(Math.random() * 3);
                 let b = Math.floor(Math.random() * 3);
                 while (a === b) b = Math.floor(Math.random() * 3);
 
-                // Get current positions
                 const posA = gameState.cups[a].getAttribute('position');
                 const posB = gameState.cups[b].getAttribute('position');
 
-                // Swap positions with animation
                 gameState.cups[a].setAttribute('animation__pos', {
                     property: 'position',
                     to: `${posB.x} ${posB.y} ${posB.z}`,
@@ -233,24 +227,19 @@
                     easing: 'easeInOutQuad'
                 });
 
-                // Update positions array
                 [gameState.positions[a], gameState.positions[b]] =
                     [gameState.positions[b], gameState.positions[a]];
 
-                // Update ball index
                 if (gameState.ballIndex === a) gameState.ballIndex = b;
                 else if (gameState.ballIndex === b) gameState.ballIndex = a;
 
                 swaps++;
-                setTimeout(doSwap, 600); // Wait for animation to finish
+                setTimeout(doSwap, 600);
             }
 
             doSwap();
         }
 
-        // ============================================
-        // FIXED REVEAL CUP LOGIC
-        // ============================================
         function revealCup(index) {
             if (gameState.isShuffling || !gameState.isPlaced || gameState.isRevealed) return;
             gameState.isRevealed = true;
@@ -259,7 +248,6 @@
             const isCorrect = (index === gameState.ballIndex);
             const pos = cup.getAttribute('position');
 
-            // Lift the chosen cup
             cup.setAttribute('animation__lift', {
                 property: 'position',
                 to: `${pos.x} 0.3 ${pos.z}`,
@@ -269,12 +257,9 @@
 
             setTimeout(() => {
                 if (isCorrect) {
-                    // Show ball under the correct cup
                     ball.setAttribute('position', `${gameState.positions[gameState.ballIndex]} 0 0`);
                     ball.setAttribute('visible', 'true');
                 } else {
-                    // Wrong guess: chosen cup is already lifted (empty)
-                    // After 1s, lift correct cup and reveal ball there
                     setTimeout(() => {
                         const correctCup = gameState.cups[gameState.ballIndex];
                         const correctPos = correctCup.getAttribute('position');
@@ -303,7 +288,6 @@
             gameState.isRevealed = false;
             gameState.ballIndex = -1;
 
-            // Reset cup positions
             gameState.positions = [-0.2, 0, 0.2];
             gameState.cups.forEach((cup, i) => {
                 cup.setAttribute('position', `${gameState.positions[i]} 0.06 0`);
@@ -311,33 +295,21 @@
                 cup.removeAttribute('animation__lift2');
             });
 
-            // Hide ball
             ball.setAttribute('visible', 'false');
-
             sendToFlutter('gameReset', {});
         }
 
         // ============================================
-        // TAP DETECTION (A-Frame Events)
+        // TAP DETECTION
         // ============================================
         cups.forEach(cup => {
             cup.addEventListener('click', () => {
                 if (!gameState.isPlaced || gameState.isShuffling || gameState.isRevealed) return;
-
                 const cupIndex = parseInt(cup.getAttribute('data-id'));
                 console.log('Cup tapped:', cupIndex);
                 sendToFlutter('cupTapped', { index: cupIndex });
             });
         });
-
-        // Fallback: touch/click on canvas
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
-            canvas.addEventListener('click', (e) => {
-                // A-Frame handles raycasting automatically with cursor component
-                console.log('Canvas clicked at:', e.clientX, e.clientY);
-            });
-        }
     </script>
 </body>
 

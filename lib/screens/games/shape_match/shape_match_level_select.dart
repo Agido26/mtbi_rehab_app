@@ -28,7 +28,7 @@ class ShapeMatchLevelSelect extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
+          color: color.withOpacity(0.15),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: color, width: 2),
         ),
