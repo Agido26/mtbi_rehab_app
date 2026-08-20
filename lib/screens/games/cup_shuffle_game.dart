@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-// IMPORTANT: This import brings in the Android-specific permission API
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../../models/game_result.dart';
 import '../../models/game_session.dart';
@@ -32,7 +31,6 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   int _wrongAttempts = 0;
   int _correctAttempts = 0;
   bool _isInitialized = false;
-  String _serverUrl = "";
 
   @override
   void initState() {
@@ -47,18 +45,36 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   }
 
   // ============================================================
-  // LOCAL HTTP SERVER (same as before)
+  // LOCAL HTTP SERVER - WITH PROPER LOGGING & CORS
   // ============================================================
   Future<int> _startAssetServer() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    debugPrint('🚀 [SERVER] Started on port ${server.port}');
 
     server.listen((HttpRequest request) async {
       final path = request.uri.path.replaceFirst('/', '');
       final assetPath = 'assets/ar/$path';
 
+      debugPrint('📥 [SERVER] Request: ${request.method} /$path');
+
+      // ✅ Handle CORS preflight
+      request.response.headers.set('Access-Control-Allow-Origin', '*');
+      request.response.headers
+          .set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      request.response.headers.set('Access-Control-Allow-Headers', '*');
+
+      if (request.method == 'OPTIONS') {
+        request.response.statusCode = HttpStatus.ok;
+        await request.response.close();
+        debugPrint('✅ [SERVER] OPTIONS handled for /$path');
+        return;
+      }
+
       try {
         final data = await rootBundle.load(assetPath);
         final bytes = data.buffer.asUint8List();
+
+        debugPrint('✅ [SERVER] Loaded $assetPath (${bytes.length} bytes)');
 
         final ext = path.split('.').last.toLowerCase();
         ContentType contentType;
@@ -73,6 +89,8 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             contentType = ContentType('text', 'css');
             break;
           case 'mind':
+            contentType = ContentType('application', 'octet-stream');
+            break;
           default:
             contentType = ContentType('application', 'octet-stream');
             break;
@@ -80,12 +98,15 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
 
         request.response
           ..headers.contentType = contentType
-          ..headers.set('Access-Control-Allow-Origin', '*')
           ..headers.set('Content-Length', bytes.length.toString())
           ..add(bytes);
         await request.response.close();
+        debugPrint('📤 [SERVER] Sent ${bytes.length} bytes for /$path');
       } catch (e) {
-        request.response.statusCode = 404;
+        debugPrint('❌ [SERVER] 404 for /$path : $e');
+        request.response.statusCode = HttpStatus.notFound;
+        request.response.headers.contentType = ContentType('text', 'plain');
+        request.response.write('404 Not Found: $path');
         await request.response.close();
       }
     });
@@ -102,14 +123,13 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
     final isLoggedIn = await AuthService().isLoggedIn();
     if (!isLoggedIn || AuthService().currentPatient == null) {
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil('/login', (route) => false);
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/login', (route) => false);
       }
       return;
     }
 
-    // 2. Request camera permission (app level)
+    // 2. Request camera permission
     final cameraStatus = await Permission.camera.request();
     if (!cameraStatus.isGranted) {
       setState(() {
@@ -123,7 +143,8 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
 
     // 3. Start local asset server
     final port = await _startAssetServer();
-    _serverUrl = 'http://127.0.0.1:$port/index.html';
+
+    debugPrint('🌐 [APP] Server URL: http://127.0.0.1:$port/index.html');
 
     // 4. Create session
     final patient = AuthService().currentPatient!;
@@ -133,6 +154,9 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       gameType: GameType.cupShuffle,
       startedAt: DateTime.now(),
     );
+
+    // ✅ Initialize WebView HERE, not in build()
+    _initWebView(port);
 
     setState(() {
       _isInitialized = true;
@@ -175,10 +199,28 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           _handleJSMessage(message.message);
         },
       )
+      // ✅ Capture only important console messages
+      ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
+        final msg = consoleMessage.message;
+        final levelName = consoleMessage.level.toString().toLowerCase();
+
+        if (msg.contains('[STATUS]') ||
+            msg.contains('AR') ||
+            msg.contains('Error') ||
+            msg.contains('error') ||
+            msg.contains('targets.mind') ||
+            levelName.contains('error') ||
+            levelName.contains('warning')) {
+          debugPrint('📝 [JS] $levelName: $msg');
+        }
+      })
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageFinished: (String url) {},
+          onPageFinished: (String url) {
+            debugPrint('✅ [WEBVIEW] Page finished: $url');
+          },
           onWebResourceError: (WebResourceError error) {
+            debugPrint('❌ [WEBVIEW] Resource error: ${error.description}');
             setState(() {
               _statusText = "AR Error: ${error.description}";
             });
@@ -187,12 +229,16 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       )
       ..loadRequest(Uri.parse('http://127.0.0.1:$port/index.html'));
 
-    // ============================================================
-    // THE FIX: Grant camera permission inside the WebView
-    // ============================================================
+    // ✅ Grant camera permission + allow camera without user gesture
     if (controller.platform is AndroidWebViewController) {
-      (controller.platform as AndroidWebViewController)
-          .setOnPlatformPermissionRequest((request) => request.grant());
+      final androidController = controller.platform as AndroidWebViewController;
+
+      androidController.setOnPlatformPermissionRequest((request) {
+        debugPrint('🔐 [WEBVIEW] Permission requested: ${request.types}');
+        request.grant();
+      });
+
+      androidController.setMediaPlaybackRequiresUserGesture(false); // ← هنا
     }
 
     _webController = controller;
@@ -203,6 +249,8 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       final data = jsonDecode(message);
       final event = data['event'];
       final payload = data['data'] ?? {};
+
+      debugPrint('📨 [JS->Flutter] Event: $event, Data: $payload');
 
       switch (event) {
         case 'arReady':
@@ -268,7 +316,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           break;
       }
     } catch (e) {
-      debugPrint('JS Message parse error: $e');
+      debugPrint('❌ [JS->Flutter] Parse error: $e');
     }
   }
 
@@ -277,6 +325,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
     final js = data != null
         ? 'receiveFromFlutter("$command", ${jsonEncode(data)})'
         : 'receiveFromFlutter("$command")';
+    debugPrint('📤 [Flutter->JS] $command');
     _webController!.runJavaScript(js);
   }
 
@@ -321,9 +370,9 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   Future<void> _saveAndExit() async {
     await _saveSession();
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Session saved!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session saved!')),
+      );
       Navigator.pop(context);
     }
   }
@@ -346,11 +395,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       );
     }
 
-    // Initialize WebView here (after _isInitialized is true)
-    if (_webController == null) {
-      _initWebView(_localServer!.port);
-    }
-
+    // ✅ WebView already initialized in _initialize()
     return AppScaffold(
       title: 'Cup Shuffle AR',
       actions: [
@@ -373,32 +418,6 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
     return SafeArea(
       child: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.75),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  "Score: $_score",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _statusText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-              ],
-            ),
-          ),
           const Spacer(),
           Container(
             margin: const EdgeInsets.all(16),
