@@ -43,22 +43,172 @@
 
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-            <a-entity mindar-image-target="targetIndex: 0">
-                <a-box position="0 0 0.1" width="0.3" height="0.3" depth="0.3" color="#4CC3D9"></a-box>
+            <a-entity id="targetAnchor" mindar-image-target="targetIndex: 0">
+                <a-entity id="cupsContainer">
+                    <a-cone id="cup0" class="cup" color="#ff3333" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                        position="-0.2 0.06 0" data-id="0"></a-cone>
+                    <a-cone id="cup1" class="cup" color="#33ff33" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                        position="0 0.06 0" data-id="1"></a-cone>
+                    <a-cone id="cup2" class="cup" color="#3333ff" radius-bottom="0.08" radius-top="0.08" height="0.12"
+                        position="0.2 0.06 0" data-id="2"></a-cone>
+                </a-entity>
+                <a-sphere id="ball" color="#ffff00" radius="0.05" position="0 0 0" visible="false"></a-sphere>
             </a-entity>
         </a-scene>
     </div>
 
     <script>
-        const statusDiv = document.getElementById('status');
-        const scene = document.querySelector('a-scene');
-        const target = document.querySelector('[mindar-image-target]');
+        // ============ 1) LOGIC — قواعد خالصة، بدون DOM ============
+        const Logic = {
+            CUPS: 3,
+            SLOTS: [-0.2, 0, 0.2],
 
-        scene.addEventListener('loaded', () => { statusDiv.textContent = 'Status: Scene loaded ✓'; });
-        scene.addEventListener('arReady', () => { statusDiv.textContent = 'Status: AR Ready ✓ وجّه الكاميرا'; });
-        scene.addEventListener('arError', () => { statusDiv.textContent = 'Status: AR Error'; });
-        target.addEventListener('targetFound', () => { statusDiv.textContent = 'Status: 🎯 TARGET FOUND'; });
-        target.addEventListener('targetLost', () => { statusDiv.textContent = 'Status: Target lost'; });
+            create() {
+                return {
+                    placed: false, shuffling: false, revealed: false,
+                    ballIndex: -1,
+                    positions: [...this.SLOTS],
+                    guessed: [false, false, false],
+                };
+            },
+
+            place(s) {
+                s.placed = true; s.revealed = false;
+                s.positions = [...this.SLOTS];
+                s.guessed = [false, false, false];
+                s.ballIndex = Math.floor(Math.random() * this.CUPS);
+                return s.ballIndex;
+            },
+
+            randomSwap(s) {
+                let a = Math.floor(Math.random() * this.CUPS);
+                let b = Math.floor(Math.random() * this.CUPS);
+                while (a === b) b = Math.floor(Math.random() * this.CUPS);
+                [s.positions[a], s.positions[b]] = [s.positions[b], s.positions[a]];
+                return { a, b };
+            },
+
+            canGuess(s, i) { return s.placed && !s.shuffling && !s.revealed && !s.guessed[i]; },
+
+            guess(s, i) {
+                s.guessed[i] = true;
+                const correct = (i === s.ballIndex);
+                if (correct) s.revealed = true;
+                return correct;
+            },
+        };
+
+        // ============ 2) VIEW — رسم A-Frame فقط ============
+        const View = {
+            cups: [], ball: null,
+            init() {
+                this.cups = Array.from(document.querySelectorAll('.cup'));
+                this.ball = document.querySelector('#ball');
+            },
+            placeCup(i, x) { this.cups[i].setAttribute('position', x + ' 0.06 0'); },
+            swapCups(a, b, xa, xb) {
+                this.cups[a].setAttribute('animation__pos', { property: 'position', to: xa + ' 0.06 0', dur: 400, easing: 'easeInOutQuad' });
+                this.cups[b].setAttribute('animation__pos', { property: 'position', to: xb + ' 0.06 0', dur: 400, easing: 'easeInOutQuad' });
+            },
+            liftCup(i, x) { this.cups[i].setAttribute('animation__lift', { property: 'position', to: x + ' 0.3 0', dur: 500, easing: 'easeOutQuad' }); },
+            showBall(x) { this.ball.setAttribute('position', x + ' 0 0'); this.ball.setAttribute('visible', 'true'); },
+            hideBall() { this.ball.setAttribute('visible', 'false'); },
+            lowerAll(positions) {
+                positions.forEach((x, i) => {
+                    this.cups[i].removeAttribute('animation__lift');
+                    this.cups[i].removeAttribute('animation__pos');
+                    this.placeCup(i, x);
+                });
+                this.hideBall();
+            },
+        };
+
+        // ============ 3) BRIDGE — تواصل Flutter فقط ============
+        const Bridge = {
+            send(event, data) {
+                if (window.FlutterApp && window.FlutterApp.postMessage) {
+                    window.FlutterApp.postMessage(JSON.stringify({ event, data: data || {} }));
+                }
+            },
+        };
+
+        // ============ 4) CONTROLLER — الربط ============
+        let S = Logic.create();
+        const statusDiv = document.getElementById('status');
+        const setStatus = (t) => { statusDiv.textContent = 'Status: ' + t; console.log('[STATUS] ' + t); };
+
+        window.receiveFromFlutter = function (command, data) {
+            switch (command) {
+                case 'startGame': {
+                    const ballIndex = Logic.place(S);
+                    S.positions.forEach((x, i) => View.placeCup(i, x));
+                    View.showBall(S.positions[ballIndex]);
+                    setTimeout(() => { View.hideBall(); Bridge.send('gamePlaced', { ballIndex }); }, 1200);
+                    setStatus('Ball hidden — Shuffle!');
+                    break;
+                }
+                case 'shuffle': {
+                    if (!S.placed || S.shuffling || S.revealed) return;
+                    S.shuffling = true;
+                    let swaps = 0;
+                    (function step() {
+                        if (swaps >= 5) { S.shuffling = false; Bridge.send('shuffleComplete'); setStatus('Pick a cup!'); return; }
+                        const { a, b } = Logic.randomSwap(S);
+                        View.swapCups(a, b, S.positions[a], S.positions[b]);
+                        swaps++;
+                        setTimeout(step, 600);
+                    })();
+                    break;
+                }
+                case 'reset': {
+                    S = Logic.create();
+                    View.lowerAll(Logic.SLOTS);
+                    Bridge.send('gameReset');
+                    setStatus('Reset');
+                    break;
+                }
+                case 'reveal': handleGuess(data.index); break;
+            }
+        };
+
+        function handleGuess(i) {
+            if (!Logic.canGuess(S, i)) return;
+            const correct = Logic.guess(S, i);
+            View.liftCup(i, S.positions[i]);
+
+            if (correct) {
+                setTimeout(() => View.showBall(S.positions[S.ballIndex]), 550);
+                Bridge.send('cupRevealed', { index: i, isCorrect: true, ballIndex: S.ballIndex });
+                setStatus('🎉 Correct!');
+            } else {
+                Bridge.send('cupRevealed', { index: i, isCorrect: false, ballIndex: S.ballIndex });
+                setStatus('Empty! Try again');
+            }
+        }
+
+        // ============ إدخال اللمس ============
+        const sceneEl = document.querySelector('a-scene');
+        sceneEl.addEventListener('loaded', () => {
+            View.init();
+            sceneEl.canvas.addEventListener('click', (e) => {
+                const rect = sceneEl.canvas.getBoundingClientRect();
+                const pointer = new AFRAME.THREE.Vector2(
+                    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                    -((e.clientY - rect.top) / rect.height) * 2 + 1
+                );
+                const ray = new AFRAME.THREE.Raycaster();
+                ray.setFromCamera(pointer, sceneEl.camera);
+                const hits = ray.intersectObjects(View.cups.map(c => c.object3D), true);
+                if (hits.length) {
+                    let obj = hits[0].object;
+                    while (obj && !(obj.el && obj.el.classList.contains('cup'))) obj = obj.parent;
+                    if (obj) handleGuess(parseInt(obj.el.getAttribute('data-id')));
+                }
+            });
+        });
+
+        sceneEl.addEventListener('arReady', () => { setStatus('AR Ready ✓'); Bridge.send('arReady'); });
+        sceneEl.addEventListener('arError', () => { setStatus('AR Error'); Bridge.send('arError', { message: 'AR Error' }); });
     </script>
 </body>
 

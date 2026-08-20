@@ -297,22 +297,21 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
 
         case 'cupRevealed':
           final isCorrect = payload['isCorrect'] as bool;
-          final revealedBallIndex = payload['ballIndex'] as int;
-
-          setState(() {
-            _phase = GamePhase.revealed;
-            if (isCorrect) {
-              _score += 10;
-              _correctAttempts++;
+          if (isCorrect) {
+            _score += 10;
+            _correctAttempts++;
+            setState(() {
+              _phase = GamePhase.revealed;
               _statusText = "Correct! Ball found! +10 points";
-            } else {
-              _wrongAttempts++;
-              _statusText =
-                  "Wrong! Ball was under cup ${revealedBallIndex + 1}";
-            }
-          });
-
-          _saveSession();
+            });
+            _saveSession();
+          } else {
+            // ✅ الجولة ما تنتهيش — المريض يجرب تاني
+            _wrongAttempts++;
+            setState(() {
+              _statusText = "Empty cup! Try again";
+            });
+          }
           break;
       }
     } catch (e) {
