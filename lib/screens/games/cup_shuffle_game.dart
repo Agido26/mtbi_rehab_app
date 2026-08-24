@@ -7,14 +7,23 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../../models/game_result.dart';
 import '../../models/game_session.dart';
+import '../../models/cupshuffleconfig.dart';
 import '../../services/auth_service.dart';
 import '../../services/game_data_service.dart';
 import '../../widgets/common/app_scaffold.dart';
 
-enum GamePhase { loading, ready, placed, shuffling, guessing, revealed }
+enum GamePhase {
+  loading,
+  ready,
+  playing,
+  shuffling,
+  guessing,
+  sessionEnd,
+}
 
 class CupShuffleGame extends StatefulWidget {
-  const CupShuffleGame({super.key});
+  final CupShuffleConfig config;
+  const CupShuffleGame({super.key, required this.config});
 
   @override
   State<CupShuffleGame> createState() => _CupShuffleGameState();
@@ -32,6 +41,15 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   int _correctAttempts = 0;
   bool _isInitialized = false;
 
+  // ===== Session / Rounds / Metrics =====
+  int _currentRound = 0;
+  final List<bool> _roundResults = [];
+  final List<double> _responseTimes = [];
+  final List<String> _errorPositions = [];
+  DateTime? _shuffleEndTime;
+
+  CupShuffleConfig get _config => widget.config;
+
   @override
   void initState() {
     super.initState();
@@ -45,19 +63,16 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   }
 
   // ============================================================
-  // LOCAL HTTP SERVER - WITH PROPER LOGGING & CORS
+  // LOCAL HTTP SERVER (بدون تغيير)
   // ============================================================
   Future<int> _startAssetServer() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    debugPrint('🚀 [SERVER] Started on port ${server.port}');
+    debugPrint('[SERVER] Started on port ${server.port}');
 
     server.listen((HttpRequest request) async {
       final path = request.uri.path.replaceFirst('/', '');
       final assetPath = 'assets/ar/$path';
 
-      debugPrint('📥 [SERVER] Request: ${request.method} /$path');
-
-      // ✅ Handle CORS preflight
       request.response.headers.set('Access-Control-Allow-Origin', '*');
       request.response.headers
           .set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -66,15 +81,12 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       if (request.method == 'OPTIONS') {
         request.response.statusCode = HttpStatus.ok;
         await request.response.close();
-        debugPrint('✅ [SERVER] OPTIONS handled for /$path');
         return;
       }
 
       try {
         final data = await rootBundle.load(assetPath);
         final bytes = data.buffer.asUint8List();
-
-        debugPrint('✅ [SERVER] Loaded $assetPath (${bytes.length} bytes)');
 
         final ext = path.split('.').last.toLowerCase();
         ContentType contentType;
@@ -93,7 +105,6 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             break;
           default:
             contentType = ContentType('application', 'octet-stream');
-            break;
         }
 
         request.response
@@ -101,12 +112,9 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           ..headers.set('Content-Length', bytes.length.toString())
           ..add(bytes);
         await request.response.close();
-        debugPrint('📤 [SERVER] Sent ${bytes.length} bytes for /$path');
       } catch (e) {
-        debugPrint('❌ [SERVER] 404 for /$path : $e');
+        debugPrint('[SERVER] 404 for /$path : $e');
         request.response.statusCode = HttpStatus.notFound;
-        request.response.headers.contentType = ContentType('text', 'plain');
-        request.response.write('404 Not Found: $path');
         await request.response.close();
       }
     });
@@ -116,37 +124,26 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   }
 
   // ============================================================
-  // AUTH + CAMERA + WEBVIEW INIT
+  // INIT
   // ============================================================
   Future<void> _initialize() async {
-    // 1. Check auth
     final isLoggedIn = await AuthService().isLoggedIn();
     if (!isLoggedIn || AuthService().currentPatient == null) {
       if (mounted) {
-        Navigator.of(context)
-            .pushNamedAndRemoveUntil('/login', (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (r) => false);
       }
       return;
     }
 
-    // 2. Request camera permission
     final cameraStatus = await Permission.camera.request();
     if (!cameraStatus.isGranted) {
-      setState(() {
-        _statusText = "Camera permission is required for AR";
-      });
-      if (cameraStatus.isPermanentlyDenied && mounted) {
-        _showPermissionDialog();
-      }
+      setState(() => _statusText = "Camera permission is required for AR");
+      if (cameraStatus.isPermanentlyDenied && mounted) _showPermissionDialog();
       return;
     }
 
-    // 3. Start local asset server
     final port = await _startAssetServer();
 
-    debugPrint('🌐 [APP] Server URL: http://127.0.0.1:$port/index.html');
-
-    // 4. Create session
     final patient = AuthService().currentPatient!;
     _session = GameSession(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -155,12 +152,9 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       startedAt: DateTime.now(),
     );
 
-    // ✅ Initialize WebView HERE, not in build()
     _initWebView(port);
 
-    setState(() {
-      _isInitialized = true;
-    });
+    setState(() => _isInitialized = true);
   }
 
   void _showPermissionDialog() {
@@ -169,20 +163,17 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       builder: (context) => AlertDialog(
         title: const Text('Camera Permission Required'),
         content: const Text(
-          'This game needs camera access for AR. Please enable it in app settings.',
-        ),
+            'This game needs camera access for AR. Please enable it in app settings.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           TextButton(
-            onPressed: () {
-              openAppSettings();
-              Navigator.pop(context);
-            },
-            child: const Text('Open Settings'),
-          ),
+              onPressed: () {
+                openAppSettings();
+                Navigator.pop(context);
+              },
+              child: const Text('Open Settings')),
         ],
       ),
     );
@@ -193,106 +184,70 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
       ..enableZoom(false)
-      ..addJavaScriptChannel(
-        'FlutterApp',
-        onMessageReceived: (JavaScriptMessage message) {
-          _handleJSMessage(message.message);
-        },
-      )
-      // ✅ Capture only important console messages
-      ..setOnConsoleMessage((JavaScriptConsoleMessage consoleMessage) {
-        final msg = consoleMessage.message;
-        final levelName = consoleMessage.level.toString().toLowerCase();
-
-        if (msg.contains('[STATUS]') ||
-            msg.contains('AR') ||
-            msg.contains('Error') ||
-            msg.contains('error') ||
-            msg.contains('targets.mind') ||
-            levelName.contains('error') ||
-            levelName.contains('warning')) {
-          debugPrint('📝 [JS] $levelName: $msg');
-        }
+      ..addJavaScriptChannel('FlutterApp',
+          onMessageReceived: (JavaScriptMessage message) {
+        _handleJSMessage(message.message);
       })
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (String url) {
-            debugPrint('✅ [WEBVIEW] Page finished: $url');
-          },
-          onWebResourceError: (WebResourceError error) {
-            debugPrint('❌ [WEBVIEW] Resource error: ${error.description}');
-            setState(() {
-              _statusText = "AR Error: ${error.description}";
-            });
-          },
-        ),
-      )
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (url) => debugPrint('[WEBVIEW] Page finished: $url'),
+        onWebResourceError: (error) {
+          debugPrint('[WEBVIEW] Resource error: ${error.description}');
+        },
+      ))
       ..loadRequest(Uri.parse('http://127.0.0.1:$port/index.html'));
 
-    // ✅ Grant camera permission + allow camera without user gesture
     if (controller.platform is AndroidWebViewController) {
       final androidController = controller.platform as AndroidWebViewController;
-
-      androidController.setOnPlatformPermissionRequest((request) {
-        debugPrint('🔐 [WEBVIEW] Permission requested: ${request.types}');
-        request.grant();
-      });
-
-      androidController.setMediaPlaybackRequiresUserGesture(false); // ← هنا
+      androidController
+          .setOnPlatformPermissionRequest((request) => request.grant());
+      androidController.setMediaPlaybackRequiresUserGesture(false);
     }
 
     _webController = controller;
   }
 
+  // ============================================================
+  // JS MESSAGES + METRICS
+  // ============================================================
   void _handleJSMessage(String message) {
     try {
       final data = jsonDecode(message);
       final event = data['event'];
       final payload = data['data'] ?? {};
 
-      debugPrint('📨 [JS->Flutter] Event: $event, Data: $payload');
-
       switch (event) {
         case 'arReady':
           setState(() {
             _phase = GamePhase.ready;
-            _statusText = "Tap 'Place Game' to start";
-          });
-          break;
-
-        case 'arError':
-          setState(() {
-            _statusText = "AR Error: ${payload['message']}";
+            _statusText = "Press Start to begin";
           });
           break;
 
         case 'gamePlaced':
+          _sendToJS('shuffle', {'count': _config.shufflesPerRound});
           setState(() {
-            _phase = GamePhase.placed;
-            _statusText = "Press Shuffle to start!";
+            _phase = GamePhase.shuffling;
+            _statusText = "Watch the shuffle...";
           });
           break;
 
         case 'shuffleComplete':
+          _shuffleEndTime = DateTime.now();
           setState(() {
             _phase = GamePhase.guessing;
             _statusText = "Pick a cup!";
           });
           break;
 
-        case 'gameReset':
-          setState(() {
-            _phase = GamePhase.ready;
-            _statusText = "Tap 'Place Game' to start";
-            _score = 0;
-            _wrongAttempts = 0;
-            _correctAttempts = 0;
-          });
-          break;
-
         case 'cupTapped':
-          final cupIndex = payload['index'] as int;
-          _sendToJS('reveal', {'index': cupIndex});
+          if (_shuffleEndTime != null) {
+            final rt =
+                DateTime.now().difference(_shuffleEndTime!).inMilliseconds /
+                    1000.0;
+            _responseTimes.add(rt);
+            _shuffleEndTime = null;
+          }
+          _sendToJS('reveal', {'index': payload['index']});
           break;
 
         case 'cupRevealed':
@@ -300,59 +255,117 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           if (isCorrect) {
             _score += 10;
             _correctAttempts++;
-            setState(() {
-              _phase = GamePhase.revealed;
-              _statusText = "Correct! Ball found! +10 points";
-            });
-            _saveSession();
+            _roundResults.add(true);
+            _nextRound();
           } else {
-            // ✅ الجولة ما تنتهيش — المريض يجرب تاني
             _wrongAttempts++;
-            setState(() {
-              _statusText = "Empty cup! Try again";
-            });
+            _errorPositions.add(payload['position']?.toString() ?? 'unknown');
+            setState(() => _statusText = "Empty! Try again");
           }
           break;
       }
     } catch (e) {
-      debugPrint('❌ [JS->Flutter] Parse error: $e');
+      debugPrint('JS Message parse error: $e');
     }
   }
 
-  void _sendToJS(String command, [Map<String, dynamic>? data]) {
-    if (_webController == null) return;
-    final js = data != null
-        ? 'receiveFromFlutter("$command", ${jsonEncode(data)})'
-        : 'receiveFromFlutter("$command")';
-    debugPrint('📤 [Flutter->JS] $command');
-    _webController!.runJavaScript(js);
-  }
-
-  void _handlePlaceGame() {
+  // ============================================================
+  // GAME FLOW
+  // ============================================================
+  void _handleStart() {
     if (_phase != GamePhase.ready) return;
-    _sendToJS('startGame');
-  }
-
-  void _handleShuffle() {
-    if (_phase != GamePhase.placed) return;
-    _sendToJS('shuffle');
     setState(() {
-      _phase = GamePhase.shuffling;
-      _statusText = "Shuffling... Watch closely!";
+      _currentRound++;
+      _phase = GamePhase.playing;
+      _statusText = "Round $_currentRound/${_config.roundsCount}";
     });
+    _sendToJS('startGame', {'cups': _config.cupsCount});
   }
 
-  void _handleReset() {
+  void _nextRound() {
+    if (_currentRound >= _config.roundsCount) {
+      _endSessionAndShowSummary();
+    } else {
+      _sendToJS('reset');
+      setState(() {
+        _phase = GamePhase.ready;
+        _statusText = "Round done! Press Start for next";
+      });
+    }
+  }
+
+  void _resetSession() {
     _sendToJS('reset');
     setState(() {
-      _phase = GamePhase.ready;
-      _statusText = "Tap 'Place Game' to start";
+      _currentRound = 0;
       _score = 0;
       _wrongAttempts = 0;
       _correctAttempts = 0;
+      _roundResults.clear();
+      _responseTimes.clear();
+      _errorPositions.clear();
+      _phase = GamePhase.ready;
+      _statusText = "Press Start to begin";
     });
   }
 
+  void _endSessionAndShowSummary() {
+    _saveSession();
+    setState(() => _phase = GamePhase.sessionEnd);
+    _showSessionSummaryDialog();
+  }
+
+  void _showSessionSummaryDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Session Complete!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Mode: ${_config.difficulty.displayName}',
+                style: TextStyle(
+                    color: _config.difficulty.color,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Score: $_score'),
+            Text('Correct: $_correctAttempts / ${_config.roundsCount}'),
+            Text('Wrong attempts: $_wrongAttempts'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _resetSession();
+            },
+            child: const Text('Play Again'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Change Level'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Exit'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SAVE + METRICS
+  // ============================================================
   Future<void> _saveSession() async {
     if (_session == null) return;
     _session!
@@ -363,19 +376,46 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           DateTime.now().difference(_session!.startedAt).inSeconds;
 
     _session!.endSession();
-    await GameDataService().saveResult(_session!.toResult());
+    final result = _session!.toResult().copyWith(metadata: _buildMetrics());
+    await GameDataService().saveResult(result);
   }
 
-  Future<void> _saveAndExit() async {
-    await _saveSession();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session saved!')),
-      );
-      Navigator.pop(context);
-    }
+  Map<String, dynamic> _buildMetrics() {
+    return {
+      'difficulty': _config.difficulty.name,
+      'cupsCount': _config.cupsCount,
+      'roundsCompleted': _currentRound,
+      'roundsTotal': _config.roundsCount,
+      'roundResults': _roundResults,
+      'responseTimes': _responseTimes,
+      'errorPositions': _errorPositions,
+      'firstAttemptCorrect': _roundResults.where((r) => r).length,
+      'fatigueIndex': _computeFatigue(),
+    };
   }
 
+  double _computeFatigue() {
+    if (_responseTimes.length < 2) return 1.0;
+    final half = _responseTimes.length ~/ 2;
+    final first = _responseTimes.sublist(0, half);
+    final second = _responseTimes.sublist(_responseTimes.length - half);
+    final avgFirst = first.reduce((a, b) => a + b) / first.length;
+    final avgSecond = second.reduce((a, b) => a + b) / second.length;
+    if (avgFirst == 0) return 1.0;
+    return avgSecond / avgFirst;
+  }
+
+  void _sendToJS(String command, [Map<String, dynamic>? data]) {
+    if (_webController == null) return;
+    final js = data != null
+        ? 'receiveFromFlutter("$command", ${jsonEncode(data)})'
+        : 'receiveFromFlutter("$command")';
+    _webController!.runJavaScript(js);
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
@@ -394,22 +434,12 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       );
     }
 
-    // ✅ WebView already initialized in _initialize()
     return AppScaffold(
       title: 'Cup Shuffle AR',
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.save),
-          onPressed: _saveAndExit,
-          tooltip: 'Save & Exit',
-        ),
-      ],
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _webController!),
-          _buildOverlay(),
-        ],
-      ),
+      body: Stack(children: [
+        WebViewWidget(controller: _webController!),
+        _buildOverlay(),
+      ]),
     );
   }
 
@@ -417,6 +447,58 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
     return SafeArea(
       child: Column(
         children: [
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.75),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Round $_currentRound/${_config.roundsCount}',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                    const SizedBox(width: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _config.difficulty.color,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _config.difficulty.displayName,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Score: $_score",
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _statusText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
           const Spacer(),
           Container(
             margin: const EdgeInsets.all(16),
@@ -428,27 +510,15 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                _buildButton("Start", Icons.play_arrow, Colors.green,
+                    _phase == GamePhase.ready, _handleStart),
                 _buildButton(
-                  "Place",
-                  Icons.place,
-                  Colors.blue,
-                  _phase == GamePhase.ready,
-                  _handlePlaceGame,
-                ),
-                _buildButton(
-                  "Shuffle",
-                  Icons.shuffle,
-                  Colors.orange,
-                  _phase == GamePhase.placed,
-                  _handleShuffle,
-                ),
-                _buildButton(
-                  "Reset",
-                  Icons.refresh,
-                  Colors.red,
-                  _phase != GamePhase.loading && _phase != GamePhase.shuffling,
-                  _handleReset,
-                ),
+                    "Reset",
+                    Icons.refresh,
+                    Colors.red,
+                    _phase != GamePhase.loading &&
+                        _phase != GamePhase.shuffling,
+                    _resetSession),
               ],
             ),
           ),
@@ -457,19 +527,14 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
     );
   }
 
-  Widget _buildButton(
-    String label,
-    IconData icon,
-    Color color,
-    bool enabled,
-    VoidCallback onTap,
-  ) {
+  Widget _buildButton(String label, IconData icon, Color color, bool enabled,
+      VoidCallback onTap) {
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10),
@@ -479,14 +544,11 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
             children: [
               Icon(icon, color: Colors.white, size: 24),
               const SizedBox(height: 4),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(label,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
             ],
           ),
         ),

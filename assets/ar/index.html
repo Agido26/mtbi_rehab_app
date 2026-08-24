@@ -1,56 +1,30 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="./aframe.min.js"></script>
     <script src="./mindar-image-aframe.prod.js" type="module"></script>
-
     <style>
-        body {
-            margin: 0;
-        }
-
-        .example-container {
-            overflow: hidden;
-            position: absolute;
-            width: 100%;
-            height: 100%;
-        }
-
-        #status {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            z-index: 9999;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 12px;
-            font-family: sans-serif;
-            font-size: 14px;
-        }
+        body { margin: 0; }
+        .example-container { overflow: hidden; position: absolute; width: 100%; height: 100%; }
+        #status { position: fixed; top: 10px; left: 10px; z-index: 9999; color: white; background: rgba(0,0,0,0.7); padding: 8px 12px; font-family: sans-serif; font-size: 14px; }
     </style>
 </head>
-
 <body>
     <div id="status">Status: starting…</div>
-
     <div class="example-container">
-        <a-scene
-            mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
-            embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
+        <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+            embedded color-space="sRGB"
+            renderer="colorManagement: true, physicallyCorrectLights"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
             <a-entity id="targetAnchor" mindar-image-target="targetIndex: 0">
                 <a-entity id="cupsContainer">
-                    <a-cone id="cup0" class="cup" color="#ff3333" radius-bottom="0.08" radius-top="0.08" height="0.12"
-                        position="-0.2 0.06 0" data-id="0"></a-cone>
-                    <a-cone id="cup1" class="cup" color="#33ff33" radius-bottom="0.08" radius-top="0.08" height="0.12"
-                        position="0 0.06 0" data-id="1"></a-cone>
-                    <a-cone id="cup2" class="cup" color="#3333ff" radius-bottom="0.08" radius-top="0.08" height="0.12"
-                        position="0.2 0.06 0" data-id="2"></a-cone>
+                    <a-cone id="cup0" class="cup" color="#ff3333" radius-bottom="0.08" radius-top="0.08" height="0.12" position="-0.2 0.06 0" data-id="0"></a-cone>
+                    <a-cone id="cup1" class="cup" color="#33ff33" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0 0.06 0" data-id="1"></a-cone>
+                    <a-cone id="cup2" class="cup" color="#3333ff" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0.2 0.06 0" data-id="2"></a-cone>
+                    <a-cone id="cup3" class="cup" color="#ffff33" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0.4 0.06 0" data-id="3" visible="false"></a-cone>
+                    <a-cone id="cup4" class="cup" color="#ff33ff" radius-bottom="0.08" radius-top="0.08" height="0.12" position="-0.4 0.06 0" data-id="4" visible="false"></a-cone>
                 </a-entity>
                 <a-sphere id="ball" color="#ffff00" radius="0.05" position="0 0 0" visible="false"></a-sphere>
             </a-entity>
@@ -58,38 +32,40 @@
     </div>
 
     <script>
-        // ============ 1) LOGIC — قواعد خالصة، بدون DOM ============
-        const Logic = {
-            CUPS: 3,
-            SLOTS: [-0.2, 0, 0.2],
+        // ============ 1) LOGIC ============
+        function computeSlots(count) {
+            const spacing = 0.2;
+            const slots = [];
+            const start = -((count - 1) * spacing) / 2;
+            for (let i = 0; i < count; i++) slots.push(+(start + i * spacing).toFixed(2));
+            return slots;
+        }
 
-            create() {
+        const Logic = {
+            create(cups) {
                 return {
+                    cups: cups,
                     placed: false, shuffling: false, revealed: false,
                     ballIndex: -1,
-                    positions: [...this.SLOTS],
-                    guessed: [false, false, false],
+                    positions: computeSlots(cups),
+                    guessed: new Array(cups).fill(false),
                 };
             },
-
             place(s) {
                 s.placed = true; s.revealed = false;
-                s.positions = [...this.SLOTS];
-                s.guessed = [false, false, false];
-                s.ballIndex = Math.floor(Math.random() * this.CUPS);
+                s.positions = computeSlots(s.cups);
+                s.guessed = new Array(s.cups).fill(false);
+                s.ballIndex = Math.floor(Math.random() * s.cups);
                 return s.ballIndex;
             },
-
             randomSwap(s) {
-                let a = Math.floor(Math.random() * this.CUPS);
-                let b = Math.floor(Math.random() * this.CUPS);
-                while (a === b) b = Math.floor(Math.random() * this.CUPS);
+                let a = Math.floor(Math.random() * s.cups);
+                let b = Math.floor(Math.random() * s.cups);
+                while (a === b) b = Math.floor(Math.random() * s.cups);
                 [s.positions[a], s.positions[b]] = [s.positions[b], s.positions[a]];
                 return { a, b };
             },
-
             canGuess(s, i) { return s.placed && !s.shuffling && !s.revealed && !s.guessed[i]; },
-
             guess(s, i) {
                 s.guessed[i] = true;
                 const correct = (i === s.ballIndex);
@@ -98,12 +74,15 @@
             },
         };
 
-        // ============ 2) VIEW — رسم A-Frame فقط ============
+        // ============ 2) VIEW ============
         const View = {
             cups: [], ball: null,
             init() {
                 this.cups = Array.from(document.querySelectorAll('.cup'));
                 this.ball = document.querySelector('#ball');
+            },
+            setActive(count) {
+                this.cups.forEach((c, i) => c.setAttribute('visible', i < count ? 'true' : 'false'));
             },
             placeCup(i, x) { this.cups[i].setAttribute('position', x + ' 0.06 0'); },
             swapCups(a, b, xa, xb) {
@@ -123,7 +102,7 @@
             },
         };
 
-        // ============ 3) BRIDGE — تواصل Flutter فقط ============
+        // ============ 3) BRIDGE ============
         const Bridge = {
             send(event, data) {
                 if (window.FlutterApp && window.FlutterApp.postMessage) {
@@ -132,14 +111,17 @@
             },
         };
 
-        // ============ 4) CONTROLLER — الربط ============
-        let S = Logic.create();
+        // ============ 4) CONTROLLER ============
+        let S = Logic.create(3);
         const statusDiv = document.getElementById('status');
         const setStatus = (t) => { statusDiv.textContent = 'Status: ' + t; console.log('[STATUS] ' + t); };
 
         window.receiveFromFlutter = function (command, data) {
             switch (command) {
                 case 'startGame': {
+                    const cups = (data && data.cups) ? data.cups : 3;
+                    S = Logic.create(cups);
+                    View.setActive(cups);
                     const ballIndex = Logic.place(S);
                     S.positions.forEach((x, i) => View.placeCup(i, x));
                     View.showBall(S.positions[ballIndex]);
@@ -150,9 +132,10 @@
                 case 'shuffle': {
                     if (!S.placed || S.shuffling || S.revealed) return;
                     S.shuffling = true;
+                    const maxSwaps = (data && data.count) ? data.count : 5;
                     let swaps = 0;
                     (function step() {
-                        if (swaps >= 5) { S.shuffling = false; Bridge.send('shuffleComplete'); setStatus('Pick a cup!'); return; }
+                        if (swaps >= maxSwaps) { S.shuffling = false; Bridge.send('shuffleComplete'); setStatus('Pick a cup!'); return; }
                         const { a, b } = Logic.randomSwap(S);
                         View.swapCups(a, b, S.positions[a], S.positions[b]);
                         swaps++;
@@ -161,9 +144,9 @@
                     break;
                 }
                 case 'reset': {
-                    S = Logic.create();
-                    View.lowerAll(Logic.SLOTS);
-                    Bridge.send('gameReset');
+                    const c = S.cups;
+                    S = Logic.create(c);
+                    View.lowerAll(S.positions);
                     setStatus('Reset');
                     break;
                 }
@@ -175,18 +158,20 @@
             if (!Logic.canGuess(S, i)) return;
             const correct = Logic.guess(S, i);
             View.liftCup(i, S.positions[i]);
+            const x = S.positions[i];
+            const posName = x < -0.07 ? 'left' : (x > 0.07 ? 'right' : 'center');
 
             if (correct) {
                 setTimeout(() => View.showBall(S.positions[S.ballIndex]), 550);
-                Bridge.send('cupRevealed', { index: i, isCorrect: true, ballIndex: S.ballIndex });
-                setStatus('🎉 Correct!');
+                Bridge.send('cupRevealed', { index: i, isCorrect: true, ballIndex: S.ballIndex, position: posName });
+                setStatus('Correct!');
             } else {
-                Bridge.send('cupRevealed', { index: i, isCorrect: false, ballIndex: S.ballIndex });
+                Bridge.send('cupRevealed', { index: i, isCorrect: false, ballIndex: S.ballIndex, position: posName });
                 setStatus('Empty! Try again');
             }
         }
 
-        // ============ إدخال اللمس ============
+        // ============ Tap input ============
         const sceneEl = document.querySelector('a-scene');
         sceneEl.addEventListener('loaded', () => {
             View.init();
@@ -198,7 +183,8 @@
                 );
                 const ray = new AFRAME.THREE.Raycaster();
                 ray.setFromCamera(pointer, sceneEl.camera);
-                const hits = ray.intersectObjects(View.cups.map(c => c.object3D), true);
+                const activeCups = View.cups.filter((c, i) => i < S.cups);
+                const hits = ray.intersectObjects(activeCups.map(c => c.object3D), true);
                 if (hits.length) {
                     let obj = hits[0].object;
                     while (obj && !(obj.el && obj.el.classList.contains('cup'))) obj = obj.parent;
@@ -207,9 +193,8 @@
             });
         });
 
-        sceneEl.addEventListener('arReady', () => { setStatus('AR Ready ✓'); Bridge.send('arReady'); });
+        sceneEl.addEventListener('arReady', () => { setStatus('AR Ready'); Bridge.send('arReady'); });
         sceneEl.addEventListener('arError', () => { setStatus('AR Error'); Bridge.send('arError', { message: 'AR Error' }); });
     </script>
 </body>
-
 </html>

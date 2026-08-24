@@ -7,7 +7,7 @@ import 'dashboard_screen.dart';
 import 'games/shape_match/shape_match_level_select.dart';
 import 'games/game_2_screen.dart';
 import 'login_screen.dart';
-import 'games/cup_shuffle_game.dart';
+import 'games/cup_shuffle_mode_screen.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -106,7 +106,7 @@ class MainScreen extends StatelessWidget {
           // Game cards
           GameCard(
             gameType: GameType.cupShuffle,
-            onTap: () => _navigateToGame(context, const CupShuffleGame()),
+            onTap: () => _navigateToGame(context, const CupShuffleModeScreen()),
           ),
           GameCard(
             gameType: GameType.visualScanning,
