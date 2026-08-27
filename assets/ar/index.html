@@ -1,43 +1,105 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="./aframe.min.js"></script>
     <script src="./mindar-image-aframe.prod.js" type="module"></script>
     <style>
-        body { margin: 0; }
-        .example-container { overflow: hidden; position: absolute; width: 100%; height: 100%; }
-        #status { position: fixed; top: 10px; left: 10px; z-index: 9999; color: white; background: rgba(0,0,0,0.7); padding: 8px 12px; font-family: sans-serif; font-size: 14px; }
+        body {
+            margin: 0;
+        }
+
+        .example-container {
+            overflow: hidden;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 9999;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            font-family: sans-serif;
+            font-size: 14px;
+        }
     </style>
 </head>
+
 <body>
     <div id="status">Status: starting…</div>
     <div class="example-container">
-        <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+        <a-scene
+            mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
             embedded color-space="sRGB"
-            renderer="colorManagement: true, physicallyCorrectLights"
+            renderer="colorManagement: true, physicallyCorrectLights, shadowMap.enabled: true"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+
+            <a-assets>
+                <a-asset-item id="cupModel" src="./cup.glb"></a-asset-item>
+                <a-asset-item id="ballModel" src="./gem.glb"></a-asset-item>
+            </a-assets>
+
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+            <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+            <a-entity light="type: directional; intensity: 1.2; castShadow: true;
+        shadowCameraLeft: -1; shadowCameraRight: 1; shadowCameraTop: 1; shadowCameraBottom: -1;"
+                position="1 2 2"></a-entity>
+
             <a-entity id="targetAnchor" mindar-image-target="targetIndex: 0">
+                <a-plane rotation="-90 0 0" position="0 0 0" width="1.4" height="0.7"
+                    material="shader: shadow; opacity: 0.5" shadow="receive: true"></a-plane>
+
                 <a-entity id="cupsContainer">
-                    <a-cone id="cup0" class="cup" color="#ff3333" radius-bottom="0.08" radius-top="0.08" height="0.12" position="-0.2 0.06 0" data-id="0"></a-cone>
-                    <a-cone id="cup1" class="cup" color="#33ff33" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0 0.06 0" data-id="1"></a-cone>
-                    <a-cone id="cup2" class="cup" color="#3333ff" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0.2 0.06 0" data-id="2"></a-cone>
-                    <a-cone id="cup3" class="cup" color="#ffff33" radius-bottom="0.08" radius-top="0.08" height="0.12" position="0.4 0.06 0" data-id="3" visible="false"></a-cone>
-                    <a-cone id="cup4" class="cup" color="#ff33ff" radius-bottom="0.08" radius-top="0.08" height="0.12" position="-0.4 0.06 0" data-id="4" visible="false"></a-cone>
+                    <a-entity id="cup0" class="cup" data-id="0" position="-0.4 0.06 0" shadow="cast: true">
+                        <a-entity gltf-model="#cupModel" rotation="180 0 0" scale="0.04 0.04 0.04"
+                            position="0 0.06 0"></a-entity>
+                    </a-entity>
+                    <a-entity id="cup1" class="cup" data-id="1" position="0 0.06 0" shadow="cast: true">
+                        <a-entity gltf-model="#cupModel" rotation="180 0 0" scale="0.04 0.04 0.04"
+                            position="0 0.06 0"></a-entity>
+                    </a-entity>
+                    <a-entity id="cup2" class="cup" data-id="2" position="0.4 0.06 0" shadow="cast: true">
+                        <a-entity gltf-model="#cupModel" rotation="180 0 0" scale="0.04 0.04 0.04"
+                            position="0 0.06 0"></a-entity>
+                    </a-entity>
+                    <a-entity id="cup3" class="cup" data-id="3" position="0.6 0.06 0" visible="false"
+                        shadow="cast: true">
+                        <a-entity gltf-model="#cupModel" rotation="180 0 0" scale="0.04 0.04 0.04"
+                            position="0 0.06 0"></a-entity>
+                    </a-entity>
+                    <a-entity id="cup4" class="cup" data-id="4" position="-0.6 0.06 0" visible="false"
+                        shadow="cast: true">
+                        <a-entity gltf-model="#cupModel" rotation="180 0 0" scale="0.04 0.04 0.04"
+                            position="0 0.06 0"></a-entity>
+                    </a-entity>
                 </a-entity>
-                <a-sphere id="ball" color="#ffff00" radius="0.05" position="0 0 0" visible="false"></a-sphere>
+
+                <a-entity id="ballContainer" visible="false">
+                    <a-entity id="ball" gltf-model="#ballModel" scale="0.2 0.2 0.2" position="0 -0.045 0"
+                        shadow="cast: true"></a-entity>
+                </a-entity>
             </a-entity>
         </a-scene>
     </div>
 
     <script>
         // ============ 1) LOGIC ============
+        const SPACING = 0.4;
+        const CUP_Y = 0.06;
+        const LIFT_Y = 0.3;
+        const BALL_Y = 0.0;
+
         function computeSlots(count) {
-            const spacing = 0.2;
             const slots = [];
-            const start = -((count - 1) * spacing) / 2;
-            for (let i = 0; i < count; i++) slots.push(+(start + i * spacing).toFixed(2));
+            const start = -((count - 1) * SPACING) / 2;
+            for (let i = 0; i < count; i++) slots.push(+(start + i * SPACING).toFixed(2));
             return slots;
         }
 
@@ -45,6 +107,8 @@
             create(cups) {
                 return {
                     cups: cups,
+                    attempts: 0,
+                    intro: false,          // ✅ الإصلاح 1
                     placed: false, shuffling: false, revealed: false,
                     ballIndex: -1,
                     positions: computeSlots(cups),
@@ -53,6 +117,7 @@
             },
             place(s) {
                 s.placed = true; s.revealed = false;
+                s.attempts = 0;
                 s.positions = computeSlots(s.cups);
                 s.guessed = new Array(s.cups).fill(false);
                 s.ballIndex = Math.floor(Math.random() * s.cups);
@@ -79,18 +144,33 @@
             cups: [], ball: null,
             init() {
                 this.cups = Array.from(document.querySelectorAll('.cup'));
-                this.ball = document.querySelector('#ball');
+                this.ball = document.querySelector('#ballContainer');
             },
             setActive(count) {
                 this.cups.forEach((c, i) => c.setAttribute('visible', i < count ? 'true' : 'false'));
             },
-            placeCup(i, x) { this.cups[i].setAttribute('position', x + ' 0.06 0'); },
+            placeCup(i, x) { this.cups[i].setAttribute('position', x + ' ' + CUP_Y + ' 0'); },
             swapCups(a, b, xa, xb) {
-                this.cups[a].setAttribute('animation__pos', { property: 'position', to: xa + ' 0.06 0', dur: 400, easing: 'easeInOutQuad' });
-                this.cups[b].setAttribute('animation__pos', { property: 'position', to: xb + ' 0.06 0', dur: 400, easing: 'easeInOutQuad' });
+                this.cups[a].setAttribute('animation__pos', { property: 'position', to: xa + ' ' + CUP_Y + ' 0', dur: 400, easing: 'easeInOutQuad' });
+                this.cups[b].setAttribute('animation__pos', { property: 'position', to: xb + ' ' + CUP_Y + ' 0', dur: 400, easing: 'easeInOutQuad' });
             },
-            liftCup(i, x) { this.cups[i].setAttribute('animation__lift', { property: 'position', to: x + ' 0.3 0', dur: 500, easing: 'easeOutQuad' }); },
-            showBall(x) { this.ball.setAttribute('position', x + ' 0 0'); this.ball.setAttribute('visible', 'true'); },
+            liftCup(i, x) {
+                this.cups[i].removeAttribute('animation__lower');
+                this.cups[i].setAttribute('animation__lift', { property: 'position', to: x + ' ' + LIFT_Y + ' 0', dur: 500, easing: 'easeOutQuad' });
+            },
+
+            lowerCup(i, x) {
+                this.cups[i].removeAttribute('animation__lift');
+                this.cups[i].setAttribute('animation__lower', { property: 'position', to: x + ' ' + CUP_Y + ' 0', dur: 400, easing: 'easeInQuad' });
+            },
+            clearAnimations() {
+                this.cups.forEach(c => {
+                    c.removeAttribute('animation__lift');
+                    c.removeAttribute('animation__lower');
+                    c.removeAttribute('animation__pos');
+                });
+            },
+            showBall(x) { this.ball.setAttribute('position', x + ' ' + BALL_Y + ' 0'); this.ball.setAttribute('visible', 'true'); },
             hideBall() { this.ball.setAttribute('visible', 'false'); },
             lowerAll(positions) {
                 positions.forEach((x, i) => {
@@ -123,14 +203,27 @@
                     S = Logic.create(cups);
                     View.setActive(cups);
                     const ballIndex = Logic.place(S);
+                    View.clearAnimations();
                     S.positions.forEach((x, i) => View.placeCup(i, x));
                     View.showBall(S.positions[ballIndex]);
-                    setTimeout(() => { View.hideBall(); Bridge.send('gamePlaced', { ballIndex }); }, 1200);
-                    setStatus('Ball hidden — Shuffle!');
+
+                    S.intro = true;   // ✅ الإصلاح 3: قفل
+                    View.liftCup(ballIndex, S.positions[ballIndex]);
+                    setStatus('Look! The ball is here');
+
+                    setTimeout(() => {
+                        View.lowerCup(ballIndex, S.positions[ballIndex]);
+                        setTimeout(() => {
+                            View.hideBall();
+                            S.intro = false;   // ✅ الإصلاح 3: فتح القفل
+                            Bridge.send('gamePlaced', { ballIndex });
+                        }, 450);
+                    }, 2000);
                     break;
                 }
                 case 'shuffle': {
-                    if (!S.placed || S.shuffling || S.revealed) return;
+                    // ✅ الإصلاح 3: شرط S.intro
+                    if (!S.placed || S.shuffling || S.revealed || S.intro) return;
                     S.shuffling = true;
                     const maxSwaps = (data && data.count) ? data.count : 5;
                     let swaps = 0;
@@ -157,17 +250,20 @@
         function handleGuess(i) {
             if (!Logic.canGuess(S, i)) return;
             const correct = Logic.guess(S, i);
+            View.clearAnimations();
             View.liftCup(i, S.positions[i]);
             const x = S.positions[i];
             const posName = x < -0.07 ? 'left' : (x > 0.07 ? 'right' : 'center');
+            S.attempts++;
 
             if (correct) {
-                setTimeout(() => View.showBall(S.positions[S.ballIndex]), 550);
-                Bridge.send('cupRevealed', { index: i, isCorrect: true, ballIndex: S.ballIndex, position: posName });
+                setTimeout(() => View.showBall(S.positions[S.ballIndex]), 400);
+                Bridge.send('cupRevealed', { index: i, isCorrect: true, attempt: S.attempts, ballIndex: S.ballIndex, position: posName });
                 setStatus('Correct!');
             } else {
-                Bridge.send('cupRevealed', { index: i, isCorrect: false, ballIndex: S.ballIndex, position: posName });
-                setStatus('Empty! Try again');
+                S.revealed = true;
+                Bridge.send('cupRevealed', { index: i, isCorrect: false, attempt: S.attempts, finalFail: true, ballIndex: S.ballIndex, position: posName });
+                setStatus('Wrong!');
             }
         }
 
@@ -197,4 +293,5 @@
         sceneEl.addEventListener('arError', () => { setStatus('AR Error'); Bridge.send('arError', { message: 'AR Error' }); });
     </script>
 </body>
+
 </html>

@@ -47,6 +47,18 @@ extension CupDifficultyExt on CupDifficulty {
     }
   }
 
+  // ⬇️ ده السطر الناقص — لازم يكون جوا الـ extension
+  int get pointsPerRound {
+    switch (this) {
+      case CupDifficulty.easy:
+        return 10;
+      case CupDifficulty.medium:
+        return 12;
+      case CupDifficulty.hard:
+        return 15;
+    }
+  }
+
   Color get color {
     switch (this) {
       case CupDifficulty.easy:

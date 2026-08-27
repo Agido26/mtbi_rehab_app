@@ -47,7 +47,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   final List<double> _responseTimes = [];
   final List<String> _errorPositions = [];
   DateTime? _shuffleEndTime;
-
+  bool _roundZeroed = false;
   CupShuffleConfig get _config => widget.config;
 
   @override
@@ -239,28 +239,24 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           });
           break;
 
-        case 'cupTapped':
-          if (_shuffleEndTime != null) {
-            final rt =
-                DateTime.now().difference(_shuffleEndTime!).inMilliseconds /
-                    1000.0;
-            _responseTimes.add(rt);
-            _shuffleEndTime = null;
-          }
-          _sendToJS('reveal', {'index': payload['index']});
-          break;
-
         case 'cupRevealed':
           final isCorrect = payload['isCorrect'] as bool;
+          final finalFail = (payload['finalFail'] as bool?) ?? false;
+
           if (isCorrect) {
-            _score += 10;
+            final points = _config.difficulty.pointsPerRound; // ← التعديل هنا
+            _score += points;
             _correctAttempts++;
             _roundResults.add(true);
-            _nextRound();
+            setState(
+                () => _statusText = "✅ Correct! +$points"); // ← والتعديل هنا
+            _finishRoundDelayed();
           } else {
             _wrongAttempts++;
             _errorPositions.add(payload['position']?.toString() ?? 'unknown');
-            setState(() => _statusText = "Empty! Try again");
+            _roundResults.add(false);
+            setState(() => _statusText = "❌ Wrong — 0 points");
+            _finishRoundDelayed();
           }
           break;
       }
@@ -273,6 +269,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   // GAME FLOW
   // ============================================================
   void _handleStart() {
+    _roundZeroed = false;
     if (_phase != GamePhase.ready) return;
     setState(() {
       _currentRound++;
@@ -280,6 +277,13 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       _statusText = "Round $_currentRound/${_config.roundsCount}";
     });
     _sendToJS('startGame', {'cups': _config.cupsCount});
+  }
+
+  void _finishRoundDelayed() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _nextRound();
+    });
   }
 
   void _nextRound() {
@@ -295,6 +299,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   }
 
   void _resetSession() {
+    _roundZeroed = false;
     _sendToJS('reset');
     setState(() {
       _currentRound = 0;
