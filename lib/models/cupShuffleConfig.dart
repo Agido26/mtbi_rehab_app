@@ -53,9 +53,9 @@ extension CupDifficultyExt on CupDifficulty {
       case CupDifficulty.easy:
         return 10;
       case CupDifficulty.medium:
-        return 12;
-      case CupDifficulty.hard:
         return 15;
+      case CupDifficulty.hard:
+        return 20;
     }
   }
 

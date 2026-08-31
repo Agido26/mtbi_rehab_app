@@ -233,10 +233,30 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
 
         case 'shuffleComplete':
           _shuffleEndTime = DateTime.now();
+          debugPrint(
+              '[shuffleComplete] ✅ _shuffleEndTime set to $_shuffleEndTime');
           setState(() {
             _phase = GamePhase.guessing;
             _statusText = "Pick a cup!";
           });
+          break;
+        case 'cupTapped':
+          final cupIndex = payload['index'] as int;
+          debugPrint('[cupTapped] ✅ received for index $cupIndex');
+          debugPrint('[cupTapped] _shuffleEndTime = $_shuffleEndTime');
+
+          if (_shuffleEndTime != null) {
+            final rt =
+                DateTime.now().difference(_shuffleEndTime!).inMilliseconds /
+                    1000.0;
+            _responseTimes.add(rt);
+            _shuffleEndTime = null;
+            debugPrint('[RT] ✅ response time = ${rt.toStringAsFixed(2)}s');
+          } else {
+            debugPrint('[RT] ❌ _shuffleEndTime is NULL — cannot calculate RT');
+          }
+
+          _sendToJS('reveal', {'index': cupIndex});
           break;
 
         case 'cupRevealed':
@@ -382,6 +402,10 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
 
     _session!.endSession();
     final result = _session!.toResult().copyWith(metadata: _buildMetrics());
+    debugPrint('═══════════════════════════════════════════════');
+    debugPrint(
+        '🎯 SESSION SUMMARY: Score=${result.score} | Acc=${(result.correctAttempts / result.totalAttempts * 100).toStringAsFixed(0)}% | AvgRT=${_responseTimes.isEmpty ? "N/A" : (_responseTimes.reduce((a, b) => a + b) / _responseTimes.length).toStringAsFixed(2)}s | FI=${_computeFatigue().toStringAsFixed(2)}');
+    debugPrint('═══════════════════════════════════════════════');
     await GameDataService().saveResult(result);
   }
 

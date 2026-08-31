@@ -108,7 +108,7 @@
                 return {
                     cups: cups,
                     attempts: 0,
-                    intro: false,          // ✅ الإصلاح 1
+                    intro: false,
                     placed: false, shuffling: false, revealed: false,
                     ballIndex: -1,
                     positions: computeSlots(cups),
@@ -201,6 +201,7 @@
                 case 'startGame': {
                     const cups = (data && data.cups) ? data.cups : 3;
                     S = Logic.create(cups);
+
                     View.setActive(cups);
                     const ballIndex = Logic.place(S);
                     View.clearAnimations();
@@ -255,7 +256,6 @@
             const x = S.positions[i];
             const posName = x < -0.07 ? 'left' : (x > 0.07 ? 'right' : 'center');
             S.attempts++;
-
             if (correct) {
                 setTimeout(() => View.showBall(S.positions[S.ballIndex]), 400);
                 Bridge.send('cupRevealed', { index: i, isCorrect: true, attempt: S.attempts, ballIndex: S.ballIndex, position: posName });
@@ -267,10 +267,14 @@
             }
         }
 
-        // ============ Tap input ============
+        // ============ Tap input + Event listeners ============
         const sceneEl = document.querySelector('a-scene');
+
+        // ✅ لازم نستنى الـ scene تتحمل قبل ما نستخدم canvas
         sceneEl.addEventListener('loaded', () => {
+            console.log('[JS] Scene loaded, initializing...');
             View.init();
+
             sceneEl.canvas.addEventListener('click', (e) => {
                 const rect = sceneEl.canvas.getBoundingClientRect();
                 const pointer = new AFRAME.THREE.Vector2(
@@ -281,16 +285,37 @@
                 ray.setFromCamera(pointer, sceneEl.camera);
                 const activeCups = View.cups.filter((c, i) => i < S.cups);
                 const hits = ray.intersectObjects(activeCups.map(c => c.object3D), true);
+
                 if (hits.length) {
                     let obj = hits[0].object;
                     while (obj && !(obj.el && obj.el.classList.contains('cup'))) obj = obj.parent;
-                    if (obj) handleGuess(parseInt(obj.el.getAttribute('data-id')));
+
+                    if (obj) {
+                        const cupIndex = parseInt(obj.el.getAttribute('data-id'));
+
+                        if (!Logic.canGuess(S, cupIndex)) return;
+                        Bridge.send('cupTapped', { index: cupIndex });
+                        setStatus('Cup selected...');
+                    }
                 }
             });
+
+            console.log('[JS] Tap listener registered, waiting for arReady...');
         });
 
-        sceneEl.addEventListener('arReady', () => { setStatus('AR Ready'); Bridge.send('arReady'); });
-        sceneEl.addEventListener('arError', () => { setStatus('AR Error'); Bridge.send('arError', { message: 'AR Error' }); });
+        sceneEl.addEventListener('arReady', () => {
+            console.log('[JS] arReady fired, sending to Flutter');
+            setStatus('AR Ready');
+            Bridge.send('arReady');
+        });
+
+        sceneEl.addEventListener('arError', () => {
+            console.log('[JS] arError fired');
+            setStatus('AR Error');
+            Bridge.send('arError', { message: 'AR Error' });
+        });
+
+        console.log('[JS] Top-level listeners registered');
     </script>
 </body>
 

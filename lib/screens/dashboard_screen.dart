@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/game_data_service.dart';
 import '../widgets/common/app_scaffold.dart';
 import '../widgets/progress_chart.dart';
+import '../widgets/games/cup_shuffle_dashboard.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -51,9 +52,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // Overall stats cards
                   _buildStatsOverview(),
                   const Divider(height: 32),
+                  // Cup Shuffle dedicated dashboard
+                  if (_resultsByGame.containsKey(GameType.cupShuffle))
+                    CupShuffleDashboard(
+                        results: _resultsByGame[GameType.cupShuffle]!),
                   // Per-game charts
                   for (final gameType in GameType.values)
-                    if (_resultsByGame.containsKey(gameType))
+                    if (gameType != GameType.cupShuffle &&
+                        _resultsByGame.containsKey(gameType))
                       ProgressChart(
                         results: _resultsByGame[gameType]!,
                         title: '${gameType.displayName} Score Over Time',
