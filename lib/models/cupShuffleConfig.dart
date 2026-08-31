@@ -28,11 +28,11 @@ extension CupDifficultyExt on CupDifficulty {
   int get roundsCount {
     switch (this) {
       case CupDifficulty.easy:
-        return 5;
+        return 7;
       case CupDifficulty.medium:
-        return 4;
+        return 5;
       case CupDifficulty.hard:
-        return 3;
+        return 4;
     }
   }
 

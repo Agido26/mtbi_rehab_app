@@ -3,46 +3,63 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../models/game_result.dart';
 import '../../models/cup_shuffle_metrics.dart';
 
-class CupShuffleDashboard extends StatelessWidget {
+// ============================================================
+// MAIN DASHBOARD (Tabs بدون سكرول متداخل)
+// ============================================================
+class CupShuffleDashboard extends StatefulWidget {
   final List<GameResult> results;
-
   const CupShuffleDashboard({super.key, required this.results});
 
   @override
-  Widget build(BuildContext context) {
-    debugPrint('[METRICS-LOAD] first metadata = ${results.first.metadata}');
-    if (results.isEmpty) return const SizedBox.shrink();
+  State<CupShuffleDashboard> createState() => _CupShuffleDashboardState();
+}
 
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Text('Cup Shuffle',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          ),
-          const TabBar(
-            labelColor: Colors.teal,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.teal,
-            tabs: [
-              Tab(icon: Icon(Icons.person), text: 'Patient'),
-              Tab(icon: Icon(Icons.medical_services), text: 'Clinician'),
-            ],
-          ),
-          SizedBox(
-            height: 520,
-            child: TabBarView(
-              children: [
-                _PatientTab(results: results),
-                _ClinicianTab(results: results),
-              ],
-            ),
-          ),
-        ],
-      ),
+class _CupShuffleDashboardState extends State<CupShuffleDashboard>
+    with SingleTickerProviderStateMixin {
+  late final TabController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.results.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Text('Cup Shuffle',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        ),
+        TabBar(
+          controller: _controller,
+          labelColor: Colors.teal,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.teal,
+          onTap: (_) => setState(() {}),
+          tabs: const [
+            Tab(icon: Icon(Icons.person), text: 'Patient'),
+            Tab(icon: Icon(Icons.medical_services), text: 'Clinician'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // ✅ المحتوى بينزل مباشرة مع سكرول الشاشة الرئيسي
+        _controller.index == 0
+            ? _PatientTab(results: widget.results)
+            : _ClinicianTab(results: widget.results),
+      ],
     );
   }
 }
@@ -53,6 +70,7 @@ class CupShuffleDashboard extends StatelessWidget {
 class _PatientTab extends StatefulWidget {
   final List<GameResult> results;
   const _PatientTab({required this.results});
+
   @override
   State<_PatientTab> createState() => _PatientTabState();
 }
@@ -79,13 +97,12 @@ class _PatientTabState extends State<_PatientTab> {
         widget.results.map((r) => r.score).reduce((a, b) => a > b ? a : b);
     final stars = (latest.accuracy * 5).round().clamp(0, 5);
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           _buildStarsCard(stars, latest),
           const SizedBox(height: 16),
-          // ✅ فلتر المستويات
           Row(
             children: ['all', 'easy', 'medium', 'hard'].map((m) {
               return Expanded(
@@ -126,7 +143,6 @@ class _PatientTabState extends State<_PatientTab> {
     );
   }
 
-  // ===== نفس الدوال المساعدة زي ما هي (انقلها جوا الـ State) =====
   Widget _buildStarsCard(int stars, CupShuffleMetrics latest) {
     return Card(
       elevation: 3,
@@ -292,7 +308,7 @@ class _PatientTabState extends State<_PatientTab> {
 }
 
 // ============================================================
-// 👨‍⚕️ CLINICIAN TAB
+// 👨‍️ CLINICIAN TAB
 // ============================================================
 class _ClinicianTab extends StatelessWidget {
   final List<GameResult> results;
@@ -304,24 +320,19 @@ class _ClinicianTab extends StatelessWidget {
         results.reversed.map((r) => CupShuffleMetrics.fromResult(r)).toList();
     final latest = metricsList.last;
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // ⏱️ Response Time Trend
           _buildResponseTimeChart(metricsList),
           const SizedBox(height: 16),
-
-          // 😴 Fatigue Index
           _buildFatigueCard(latest),
           const SizedBox(height: 16),
-
-          // 🎯 Error Pattern
+          _buildFatigueTrendChart(metricsList), // ✅ الجديد: FI كـ trend
+          const SizedBox(height: 16),
           _buildErrorPatternChart(metricsList),
           const SizedBox(height: 16),
-
-          // 📋 Sessions Table
-          _buildSessionsTable(results),
+          _buildSessionsList(results),
         ],
       ),
     );
@@ -400,6 +411,18 @@ class _ClinicianTab extends StatelessWidget {
   }
 
   Widget _buildFatigueCard(CupShuffleMetrics latest) {
+    if (!latest.hasFatigueData) {
+      return Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: const ListTile(
+          leading: Icon(Icons.help_outline, color: Colors.grey),
+          title: Text('Cognitive Fatigue'),
+          subtitle: Text('N/A — need at least 4 rounds'),
+        ),
+      );
+    }
+
     final fi = latest.fatigueIndex;
     final Color color;
     final String label;
@@ -436,7 +459,7 @@ class _ClinicianTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Cognitive Fatigue',
+                  const Text('Cognitive Fatigue (Latest)',
                       style:
                           TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
@@ -452,6 +475,104 @@ class _ClinicianTab extends StatelessWidget {
               fi.toStringAsFixed(2),
               style: TextStyle(
                   fontSize: 28, fontWeight: FontWeight.bold, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ الجديد: Fatigue Index عبر الجلسات
+  Widget _buildFatigueTrendChart(List<CupShuffleMetrics> metricsList) {
+    final valid = metricsList.where((m) => m.hasFatigueData).toList();
+    if (valid.length < 2) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Not enough fatigue data yet'),
+        ),
+      );
+    }
+    final last10 = valid.length > 10 ? valid.sublist(valid.length - 10) : valid;
+
+    final spots = last10
+        .asMap()
+        .entries
+        .map((e) => FlSpot(e.key.toDouble(), e.value.fatigueIndex))
+        .toList();
+
+    final maxFI =
+        last10.map((m) => m.fatigueIndex).reduce((a, b) => a > b ? a : b);
+    final maxY = (maxFI + 0.3).clamp(1.5, 3.0);
+
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Fatigue Index Trend',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 150,
+              child: LineChart(
+                LineChartData(
+                  minY: 0.5,
+                  maxY: maxY,
+                  extraLinesData: ExtraLinesData(horizontalLines: [
+                    HorizontalLine(
+                      y: 1.2,
+                      color: Colors.red.withOpacity(0.6),
+                      strokeWidth: 1,
+                      dashArray: [6, 4],
+                    ),
+                  ]),
+                  gridData: FlGridData(
+                    show: true,
+                    getDrawingHorizontalLine: (v) =>
+                        FlLine(color: Colors.grey[200]!, strokeWidth: 1),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 35,
+                        getTitlesWidget: (v, _) => Text(v.toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (v, _) => Text('${v.round() + 1}',
+                            style: const TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: true,
+                      color: Colors.orange,
+                      barWidth: 3,
+                      dotData: const FlDotData(show: true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Red dashed line = fatigue threshold (1.2)',
+              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -547,7 +668,8 @@ class _ClinicianTab extends StatelessWidget {
     ]);
   }
 
-  Widget _buildSessionsTable(List<GameResult> results) {
+  // ✅ صفوف بسيطة بدل DataTable (بدون مشاكل قياس)
+  Widget _buildSessionsList(List<GameResult> results) {
     final last10 = results.length > 10 ? results.sublist(0, 10) : results;
 
     return Card(
@@ -599,11 +721,16 @@ class _ClinicianTab extends StatelessWidget {
                         Text('Acc: ${(m.accuracy * 100).round()}%'),
                         Text(
                             'RT: ${m.averageResponseTime.toStringAsFixed(1)}s'),
-                        Text('FI: ${m.fatigueIndex.toStringAsFixed(2)}',
+                        Text(
+                            m.hasFatigueData
+                                ? 'FI: ${m.fatigueIndex.toStringAsFixed(2)}'
+                                : 'FI: —',
                             style: TextStyle(
-                                color: m.showsFatigue
-                                    ? Colors.red
-                                    : Colors.green)),
+                                color: !m.hasFatigueData
+                                    ? Colors.grey
+                                    : m.showsFatigue
+                                        ? Colors.red
+                                        : Colors.green)),
                       ],
                     ),
                     const Divider(height: 12),

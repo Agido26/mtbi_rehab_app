@@ -33,6 +33,9 @@ class CupShuffleMetrics {
 
   bool get showsFatigue => fatigueIndex > 1.2;
 
+  /// هل عندنا بيانات كافية للـ FI؟
+  bool get hasFatigueData => fatigueIndex > 0;
+
   String get dominantErrorSide {
     if (errorPositions.isEmpty) return 'none';
     final counts = <String, int>{};

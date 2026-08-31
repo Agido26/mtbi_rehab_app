@@ -424,14 +424,19 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
   }
 
   double _computeFatigue() {
-    if (_responseTimes.length < 2) return 1.0;
-    final half = _responseTimes.length ~/ 2;
+    final n = _responseTimes.length;
+    // أقل من 4 جولات = ما يكفي لقياس التعب → N/A
+    if (n < 4) return -1.0;
+
+    final half = n ~/ 2;
     final first = _responseTimes.sublist(0, half);
-    final second = _responseTimes.sublist(_responseTimes.length - half);
+    final second = _responseTimes.sublist(n - half);
     final avgFirst = first.reduce((a, b) => a + b) / first.length;
     final avgSecond = second.reduce((a, b) => a + b) / second.length;
-    if (avgFirst == 0) return 1.0;
-    return avgSecond / avgFirst;
+
+    // أرضية 0.6 ثانية: التخمين السريع ما يضخّمش النسبة
+    final baseline = avgFirst < 0.6 ? 0.6 : avgFirst;
+    return avgSecond / baseline;
   }
 
   void _sendToJS(String command, [Map<String, dynamic>? data]) {
