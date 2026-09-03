@@ -58,7 +58,7 @@ class ShapeMatchLevelSelect extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${config.shapes.length} shapes • ${config.timeLimitSeconds}s • ${config.maxWrongAttempts} max wrong',
+                    '${config.cardsCount} shapes • ${config.roundsCount} rounds • ${config.peeksAllowed} peeks',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -84,7 +84,7 @@ class ShapeMatchLevelSelect extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24),
             child: Text(
-              'Drag colored shapes to their matching shadows before time runs out!',
+              'Match the AR shapes to the order shown at the top of the screen!',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
