@@ -77,12 +77,13 @@
     </style>
 </head>
 
+
 <body>
     <div id="status">Status: starting…</div>
     <div id="silhouettes"></div>
     <div class="example-container">
         <a-scene
-            mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
             embedded color-space="sRGB"
             renderer="colorManagement: true, physicallyCorrectLights, shadowMap.enabled: true"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
@@ -180,7 +181,12 @@
             showing: false,
         };
         const sceneEl = document.querySelector('a-scene');
-
+        const tracked = { 0: false, 1: false, 2: false, 3: false, 4: false };
+        for (let i = 0; i < 5; i++) {
+            const t = document.getElementById('target' + i);
+            t.addEventListener('targetFound', () => { tracked[i] = true; });
+            t.addEventListener('targetLost', () => { tracked[i] = false; });
+        }
         // ====== HELPERS ======
         function renderSilhouettes(shapeIds) {
             const container = document.getElementById('silhouettes');
@@ -220,9 +226,8 @@
                 const target = document.getElementById('target' + i);
                 const isActive = S.correctOrder.includes(i);
                 if (!isActive) continue;
-                // Check if target is tracked
-                const visible = target.getAttribute('visible');
-                if (visible) {
+
+                if (tracked[i]) {
                     const worldPos = new THREE.Vector3();
                     target.object3D.getWorldPosition(worldPos);
                     results.push({ targetIndex: i, worldX: worldPos.x, detected: true });

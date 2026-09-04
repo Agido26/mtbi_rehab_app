@@ -194,7 +194,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           debugPrint('[WEBVIEW] Resource error: ${error.description}');
         },
       ))
-      ..loadRequest(Uri.parse('http://127.0.0.1:$port/index.html'));
+      ..loadRequest(Uri.parse('http://127.0.0.1:$port/cupshuffle_game.html'));
 
     if (controller.platform is AndroidWebViewController) {
       final androidController = controller.platform as AndroidWebViewController;
