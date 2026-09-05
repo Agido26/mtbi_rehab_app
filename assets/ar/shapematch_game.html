@@ -78,12 +78,13 @@
 </head>
 
 
+
 <body>
     <div id="status">Status: starting…</div>
     <div id="silhouettes"></div>
     <div class="example-container">
         <a-scene
-            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; maxTrack: 5; uiLoading: no; uiScanning: no; uiError: no;"
             embedded color-space="sRGB"
             renderer="colorManagement: true, physicallyCorrectLights, shadowMap.enabled: true"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
@@ -114,6 +115,7 @@
         </a-scene>
     </div>
 
+
     <script>
         // ====== CONFIG ======
         // Matches kAllShapeIds in Flutter — index = targetIndex
@@ -124,7 +126,7 @@
             { id: 'heart', type: 'heart', color: '#E91E63' },
             { id: 'square', type: 'box', color: '#1E88E5' },
         ];
-
+        const TEST_MODE = true; // ← خلّيها false لما تخلص الاختبارات
         const Bridge = {
             send(event, data) {
                 if (window.FlutterApp && window.FlutterApp.postMessage) {
@@ -201,9 +203,9 @@
         function showShapesOnCards(durationSec) {
             S.showing = true;
             S.correctOrder.forEach(targetIdx => {
-                const marker = document.getElementById('shape' + targetIdx);
-                marker.setAttribute('visible', 'true');
+                document.getElementById('shape' + targetIdx).setAttribute('visible', 'true');
             });
+            if (TEST_MODE) return;   // ✅ بدون إخفاء في وضع الاخت
             setTimeout(() => {
                 S.correctOrder.forEach(targetIdx => {
                     document.getElementById('shape' + targetIdx).setAttribute('visible', 'false');
@@ -279,11 +281,14 @@
                     const cards = collectCardPositions();
                     const allDetected = cards.every(c => c.detected);
                     if (!allDetected) {
-                        Bridge.send('checkResult', { allDetected: false });
-                        setStatus('Move back — show all cards to camera');
+                        const missing = cards.filter(c => !c.detected).length;
+                        Bridge.send('checkResult', {
+                            allDetected: false,
+                            missingCount: missing
+                        });
+                        setStatus(missing + ' card(s) not visible — show ALL cards to camera');
                         return;
                     }
-                    // Sort by worldX (left to right)
                     cards.sort((a, b) => a.worldX - b.worldX);
                     const patientOrder = cards.map(c => c.targetIndex);
                     Bridge.send('checkResult', {
@@ -294,7 +299,6 @@
                     setStatus('Checking...');
                     break;
                 }
-
                 case 'showResults': {
                     // data = { results: [{targetIndex, correct: true/false}, ...] }
                     const duration = data.durationSeconds || 3;
@@ -316,11 +320,15 @@
                         }
                     });
                     setStatus(data.accuracyPercent + '% correct');
-                    setTimeout(() => {
-                        hideAllShapes();
-                        document.querySelectorAll('.result-ring').forEach(r => r.remove());
-                        Bridge.send('resultsHidden');
-                    }, duration * 1000);
+                    if (!TEST_MODE) {
+                        setTimeout(() => {
+                            hideAllShapes();
+                            document.querySelectorAll('.result-ring').forEach(r => r.remove());
+                            Bridge.send('resultsHidden');
+                        }, duration * 1000);
+                    } else {
+                        setStatus('TEST: النتائج ظاهرة — دوس Reset لجولة جديدة');
+                    }
                     break;
                 }
 

@@ -32,10 +32,10 @@
 </head>
 
 <body>
-    <div id="status">وجّه الكاميرا على كل بطاقة وسجّل الرقم اللي يظهر فوقها</div>
+    <div id="status">وجّه الكاميرا على كل بطاقة وسجّل اللون اللي يظهر فوقها</div>
     <div class="example-container">
         <a-scene
-            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; maxTrack: 5; uiLoading: no; uiScanning: no; uiError: no;"
             embedded vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
@@ -71,6 +71,43 @@
             </a-entity>
         </a-scene>
     </div>
+</body>
+
+</html>
+<script>
+    const setStatus = (t) => {
+        document.getElementById('status').textContent = 'Status: ' + t;
+        console.log('[STATUS] ' + t);
+    };
+    const setTrackInfo = (t) => {
+        document.getElementById('trackInfo').textContent = t;
+    };
+
+    const sceneEl = document.querySelector('a-scene');
+    const names = ['ماركر 1 (كورة حمرا)', 'ماركر 2 (صندوق أزرق)'];
+    const tracked = { 0: false, 1: false };
+
+    function updateInfo() {
+        const lines = [];
+        for (let i = 0; i < 2; i++) {
+            lines.push(names[i] + ': ' + (tracked[i] ? '✅ متتبع' : '⬜ مش متتبع'));
+        }
+        setTrackInfo(lines.join('   |   '));
+    }
+
+    sceneEl.addEventListener('loaded', () => {
+        for (let i = 0; i < 2; i++) {
+            const t = document.getElementById('target' + i);
+            if (!t) continue;
+            t.addEventListener('targetFound', () => { tracked[i] = true; updateInfo(); });
+            t.addEventListener('targetLost', () => { tracked[i] = false; updateInfo(); });
+        }
+        updateInfo();
+    });
+
+    sceneEl.addEventListener('arReady', () => { setStatus('AR Ready'); });
+    sceneEl.addEventListener('arError', () => { setStatus('AR Error'); });
+</script>
 </body>
 
 </html>
