@@ -4,6 +4,52 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="./aframe.min.js"></script>
+    <script>
+        // ===== Camera Quality Hook (تشخيص + حقنة قيود) =====
+        (function () {
+            const origGM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+            navigator.mediaDevices.getUserMedia = async function (constraints) {
+                // ✅ الحقنة: نطلب 1080p + فوكس مستمر
+                const injected = {
+                    ...constraints,
+                    video: {
+                        ...(typeof constraints.video === 'object' ? constraints.video : {}),
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        advanced: [
+                            { focusMode: 'continuous' },
+                            { exposureMode: 'continuous' },
+                            { whiteBalanceMode: 'continuous' },
+                        ],
+                    },
+                };
+
+                const stream = await origGM(injected);
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+                const info = {
+                    requested: { width: 1920, height: 1080 },
+                    actual: { width: settings.width, height: settings.height },
+                    fps: settings.frameRate,
+                    focusMode: settings.focusMode || 'n/a',
+                    supportedFocus: caps.focusMode || 'n/a',
+                    exposureMode: settings.exposureMode || 'n/a',
+                    label: track.label,
+                };
+
+                // نرسل لـ Flutter للطباعة في الـ terminal
+                if (window.FlutterApp && window.FlutterApp.postMessage) {
+                    window.FlutterApp.postMessage(JSON.stringify({
+                        event: 'cameraInfo', data: info
+                    }));
+                }
+                console.log('[CAMERA] settings:', info);
+                return stream;
+            };
+        })();
+    </script>
     <script src="./mindar-image-aframe.prod.js" type="module"></script>
     <style>
         body {
@@ -29,7 +75,7 @@
             font-size: 14px;
         }
 
-        /* Silhouettes at top of screen (fixed, not tracked) */
+        /* ===== شريط الـ silhouettes فوق ===== */
         #silhouettes {
             position: fixed;
             top: 16px;
@@ -38,95 +84,92 @@
             z-index: 100;
             display: flex;
             justify-content: center;
-            gap: 24px;
+            gap: 16px;
             pointer-events: none;
         }
 
+        .chip {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 4px 10px;
+        }
+
         .silhouette {
-            width: 44px;
-            height: 44px;
-            background: #1a1a1a;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            font-size: 34px;
+            line-height: 1.2;
+            display: inline-block;
+            filter: brightness(0);
+            /* ✅ مؤقت: emojis سوداء — لحد ما تجهز PNGs */
         }
 
-        .silhouette.circle {
-            border-radius: 50%;
-        }
-
-        .silhouette.star {
-            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%,
-                    50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-            border-radius: 0;
-        }
-
-        .silhouette.triangle {
-            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-            border-radius: 0;
-        }
-
-        .silhouette.heart {
-            clip-path: polygon(50% 85%, 15% 50%, 5% 30%, 15% 10%, 35% 10%,
-                    50% 30%, 65% 10%, 85% 10%, 95% 30%, 85% 50%);
-            border-radius: 0;
-        }
-
-        .silhouette.square {
-            border-radius: 6px;
-        }
+        /* لما تجهز صور الـ PNG السوداء، استبدل الـ span بـ img وفعّل ده:
+        .silhouette-img { width: 48px; height: 48px; object-fit: contain; } */
     </style>
 </head>
-
-
 
 <body>
     <div id="status">Status: starting…</div>
     <div id="silhouettes"></div>
     <div class="example-container">
+        <!-- ✅ default = hard (5 targets) — الـ JS بيعدّل maxTrack حسب المستوى قبل بدء التحميل -->
         <a-scene
-            mindar-image="imageTargetSrc: ./shapematch_markers.mind; autoStart: true; maxTrack: 5; uiLoading: no; uiScanning: no; uiError: no;"
-            embedded color-space="sRGB"
-            renderer="colorManagement: true, physicallyCorrectLights, shadowMap.enabled: true"
+            mindar-image="imageTargetSrc: ./markers/shapematch_markers.mind; autoStart: true; maxTrack: 5; uiLoading: no; uiScanning: no; uiError: no;"
+            embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+
+            <a-assets>
+                <a-asset-item id="starModel" src="./shapes/star.glb"></a-asset-item>
+                <a-asset-item id="arrowModel" src="./shapes/arrow.glb"></a-asset-item>
+                <a-asset-item id="catModel" src="./shapes/cat.glb"></a-asset-item>
+                <a-asset-item id="dogModel" src="./shapes/dog.glb"></a-asset-item>
+                <a-asset-item id="diamondModel" src="./shapes/diamond.glb"></a-asset-item>
+            </a-assets>
 
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-            <a-entity light="type: ambient; intensity: 0.6"></a-entity>
-            <a-entity light="type: directional; intensity: 1.2; castShadow: true;
-                shadowCameraLeft: -2; shadowCameraRight: 2;
-                shadowCameraTop: 2; shadowCameraBottom: -2;" position="1 2 2"></a-entity>
+            <a-entity light="type: ambient; intensity: 0.7"></a-entity>
+            <a-entity light="type: directional; intensity: 1.2" position="1 2 2"></a-entity>
 
-            <!-- 5 targets: one per card -->
             <a-entity id="target0" mindar-image-target="targetIndex: 0">
-                <a-entity id="shape0" class="shape-marker" data-target-index="0" visible="false"></a-entity>
+                <a-entity id="shape0" visible="false"></a-entity>
             </a-entity>
             <a-entity id="target1" mindar-image-target="targetIndex: 1">
-                <a-entity id="shape1" class="shape-marker" data-target-index="1" visible="false"></a-entity>
+                <a-entity id="shape1" visible="false"></a-entity>
             </a-entity>
             <a-entity id="target2" mindar-image-target="targetIndex: 2">
-                <a-entity id="shape2" class="shape-marker" data-target-index="2" visible="false"></a-entity>
+                <a-entity id="shape2" visible="false"></a-entity>
             </a-entity>
             <a-entity id="target3" mindar-image-target="targetIndex: 3">
-                <a-entity id="shape3" class="shape-marker" data-target-index="3" visible="false"></a-entity>
+                <a-entity id="shape3" visible="false"></a-entity>
             </a-entity>
             <a-entity id="target4" mindar-image-target="targetIndex: 4">
-                <a-entity id="shape4" class="shape-marker" data-target-index="4" visible="false"></a-entity>
+                <a-entity id="shape4" visible="false"></a-entity>
             </a-entity>
         </a-scene>
     </div>
 
-
     <script>
-        // ====== CONFIG ======
-        // Matches kAllShapeIds in Flutter — index = targetIndex
+        // ============================================================
+        // CONFIG
+        // ============================================================
+        const TEST_MODE = true;   // ← false لما تخلص الاختبارات (بيوقف المؤقتات والإخفاء)
+
+        // ✅ طبقة التوجيه: لو بكرة عملت ملف مصغّر لمستوى، عدّل سطره هنا بس
+        const MIND_FILES = {
+            easy: { src: './markers/shapematch_markers.mind', maxTrack: 3 },
+            medium: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
+            hard: { src: './markers/shapematch_markers.mind', maxTrack: 5 },
+        };
+
+        // ✅ عقد الربط: الترتيب هنا = targetIndex = ترتيب kAllShapeIds في Flutter
         const SHAPE_DEFS = [
-            { id: 'circle', type: 'sphere', color: '#E53935' },
-            { id: 'star', type: 'star', color: '#FDD835' },
-            { id: 'triangle', type: 'triangle', color: '#43A047' },
-            { id: 'heart', type: 'heart', color: '#E91E63' },
-            { id: 'square', type: 'box', color: '#1E88E5' },
+            { id: 'star', assetId: 'starModel', emoji: '⭐', scale: 0.3, y: 0.10, rotation: '180 0 0' },
+            { id: 'arrow', assetId: 'arrowModel', emoji: '➡️', scale: 0.6, y: 0.10, rotation: '180 0 0' },
+            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 1, y: 0.10, rotation: '0 150 0' },
+            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 1, y: 0.10, rotation: '0 0 0' },
+            { id: 'diamond', assetId: 'diamondModel', emoji: '💎', scale: 0.6, y: 0.10, rotation: '0 0 0' },
         ];
-        const TEST_MODE = true; // ← خلّيها false لما تخلص الاختبارات
+
         const Bridge = {
             send(event, data) {
                 if (window.FlutterApp && window.FlutterApp.postMessage) {
@@ -140,214 +183,204 @@
             console.log('[STATUS] ' + t);
         };
 
-        // ====== SHAPE BUILDERS (painted primitives — later we can swap to GLB) ======
-        function buildShape(def) {
-            const el = document.createElement('a-entity');
-            switch (def.type) {
-                case 'sphere':
-                    el.innerHTML = `<a-sphere radius="0.06" color="${def.color}" shadow="cast: true"></a-sphere>`;
-                    break;
-                case 'box':
-                    el.innerHTML = `<a-box width="0.1" height="0.1" depth="0.02" color="${def.color}" shadow="cast: true"></a-box>`;
-                    break;
-                case 'triangle':
-                    // Use cylinder + rotation as cheap triangle stand-in
-                    el.innerHTML = `
-                        <a-cone radius-bottom="0.07" radius-top="0" height="0.12"
-                            color="${def.color}" shadow="cast: true"></a-cone>`;
-                    break;
-                case 'star':
-                    // Use two crossed boxes to hint at star (replace with GLB later)
-                    el.innerHTML = `
-                        <a-box width="0.12" height="0.025" depth="0.02" color="${def.color}" shadow="cast: true"></a-box>
-                        <a-box width="0.12" height="0.025" depth="0.02" color="${def.color}" rotation="0 0 60" shadow="cast: true"></a-box>
-                        <a-box width="0.12" height="0.025" depth="0.02" color="${def.color}" rotation="0 0 120" shadow="cast: true"></a-box>`;
-                    break;
-                case 'heart':
-                    // Two spheres + a cone = cheap heart (replace with GLB later)
-                    el.innerHTML = `
-                        <a-sphere radius="0.04" color="${def.color}" position="-0.03 0.02 0" shadow="cast: true"></a-sphere>
-                        <a-sphere radius="0.04" color="${def.color}" position="0.03 0.02 0" shadow="cast: true"></a-sphere>
-                        <a-cone radius-bottom="0.055" radius-top="0" height="0.09"
-                            rotation="0 0 180" color="${def.color}" position="0 -0.03 0" shadow="cast: true"></a-cone>`;
-                    break;
-            }
-            el.setAttribute('position', '0 0.12 0');
-            return el;
-        }
-
-        // ====== STATE ======
+        // ============================================================
+        // STATE
+        // ============================================================
         let S = {
-            activeShapeIds: [],    // shapeIds for current round (e.g. ['star','circle','triangle'])
-            correctOrder: [],      // targetIndices in correct order, e.g. [1,0,2]
+            sequence: [],     // ترتيب الأشكال المطلوب (silhouettes)
+            assignment: [],   // [{target, shape}] التوزيع العشوائي
+            correctOrder: [], // targetIndex لكل موقع في الـ sequence
             showing: false,
         };
-        const sceneEl = document.querySelector('a-scene');
         const tracked = { 0: false, 1: false, 2: false, 3: false, 4: false };
-        for (let i = 0; i < 5; i++) {
-            const t = document.getElementById('target' + i);
-            t.addEventListener('targetFound', () => { tracked[i] = true; });
-            t.addEventListener('targetLost', () => { tracked[i] = false; });
+
+        const sceneEl = document.querySelector('a-scene');
+
+        // ===== المستوى من الـ URL → maxTrack (نفس الملف الواحد) =====
+        const level = new URLSearchParams(window.location.search).get('level') || 'hard';
+        const mindCfg = MIND_FILES[level] || MIND_FILES.hard;
+        sceneEl.setAttribute('mindar-image',
+            'imageTargetSrc: ' + mindCfg.src +
+            '; autoStart: true; maxTrack: ' + mindCfg.maxTrack +
+            '; uiLoading: no; uiScanning: no; uiError: no;');
+        console.log('[JS] level=' + level + ' mind=' + mindCfg.src + ' maxTrack=' + mindCfg.maxTrack);
+
+        // ============================================================
+        // HELPERS
+        // ============================================================
+        function shapeDefById(id) {
+            return SHAPE_DEFS.find(d => d.id === id);
         }
-        // ====== HELPERS ======
+
         function renderSilhouettes(shapeIds) {
             const container = document.getElementById('silhouettes');
             container.innerHTML = '';
             shapeIds.forEach(id => {
-                const div = document.createElement('div');
-                div.className = 'silhouette ' + id;
-                container.appendChild(div);
+                const def = shapeDefById(id);
+                const chip = document.createElement('span');
+                chip.className = 'chip';
+                const span = document.createElement('span');
+                span.className = 'silhouette';
+                span.textContent = def ? def.emoji : '?';
+                chip.appendChild(span);
+                container.appendChild(chip);
             });
         }
 
-        function showShapesOnCards(durationSec) {
-            S.showing = true;
-            S.correctOrder.forEach(targetIdx => {
-                document.getElementById('shape' + targetIdx).setAttribute('visible', 'true');
-            });
-            if (TEST_MODE) return;   // ✅ بدون إخفاء في وضع الاخت
-            setTimeout(() => {
-                S.correctOrder.forEach(targetIdx => {
-                    document.getElementById('shape' + targetIdx).setAttribute('visible', 'false');
-                });
-                S.showing = false;
-                Bridge.send('peekEnded');
-            }, durationSec * 1000);
+        function buildShape(def) {
+            const el = document.createElement('a-entity');
+            el.innerHTML = '<a-entity gltf-model="#' + def.assetId +
+                '" scale="' + def.scale + ' ' + def.scale + ' ' + def.scale +
+                '" rotation="' + (def.rotation || '0 0 0') + '"></a-entity>';
+            el.setAttribute('position', '0 ' + def.y + ' 0');
+            return el;
         }
 
-        function hideAllShapes() {
+        function clearAllShapes() {
             for (let i = 0; i < 5; i++) {
-                document.getElementById('shape' + i).setAttribute('visible', 'false');
+                const el = document.getElementById('shape' + i);
+                if (el) { el.innerHTML = ''; el.setAttribute('visible', 'false'); }
             }
+            document.querySelectorAll('.result-ring').forEach(r => r.remove());
+        }
+
+        function showActiveShapes() {
+            S.assignment.forEach(item => {
+                const el = document.getElementById('shape' + item.target);
+                if (el) el.setAttribute('visible', 'true');
+            });
+            S.showing = true;
+        }
+
+        function hideActiveShapes() {
+            S.assignment.forEach(item => {
+                const el = document.getElementById('shape' + item.target);
+                if (el) el.setAttribute('visible', 'false');
+            });
+            S.showing = false;
         }
 
         function collectCardPositions() {
-            // Returns: [{targetIndex, worldX, detected}] sorted by X
             const results = [];
-            for (let i = 0; i < 5; i++) {
-                const target = document.getElementById('target' + i);
-                const isActive = S.correctOrder.includes(i);
-                if (!isActive) continue;
-
-                if (tracked[i]) {
-                    const worldPos = new THREE.Vector3();
-                    target.object3D.getWorldPosition(worldPos);
-                    results.push({ targetIndex: i, worldX: worldPos.x, detected: true });
+            S.correctOrder.forEach(t => {
+                if (tracked[t]) {
+                    const worldPos = new AFRAME.THREE.Vector3();
+                    document.getElementById('target' + t).object3D.getWorldPosition(worldPos);
+                    results.push({ targetIndex: t, worldX: worldPos.x, detected: true });
                 } else {
-                    results.push({ targetIndex: i, worldX: null, detected: false });
+                    results.push({ targetIndex: t, worldX: null, detected: false });
                 }
-            }
+            });
             return results;
         }
 
-        // ====== COMMANDS FROM FLUTTER ======
+        // ============================================================
+        // COMMANDS FROM FLUTTER (العقد النهائي)
+        // ============================================================
         window.receiveFromFlutter = function (command, data) {
             switch (command) {
                 case 'startRound': {
-                    // data = { shapeIds: ['star','circle',...], correctOrder: [1,0,...] }
-                    S.activeShapeIds = data.shapeIds;
-                    S.correctOrder = data.correctOrder;
+                    S.sequence = data.sequence || [];
+                    S.assignment = data.assignment || [];
+                    S.correctOrder = data.correctOrder || [];
 
-                    // Reset all markers
-                    hideAllShapes();
-                    for (let i = 0; i < 5; i++) {
-                        const marker = document.getElementById('shape' + i);
-                        marker.innerHTML = '';
-                    }
-                    // Build shape meshes for active cards
-                    S.correctOrder.forEach(targetIdx => {
-                        const marker = document.getElementById('shape' + targetIdx);
-                        const shapeId = SHAPE_DEFS[targetIdx].id;
-                        if (S.activeShapeIds.includes(shapeId)) {
-                            const def = SHAPE_DEFS[targetIdx];
-                            const built = buildShape(def);
-                            marker.appendChild(built);
-                        }
+                    clearAllShapes();
+                    S.assignment.forEach(item => {
+                        const def = shapeDefById(item.shape);
+                        const marker = document.getElementById('shape' + item.target);
+                        if (def && marker) marker.appendChild(buildShape(def));
                     });
-                    renderSilhouettes(S.activeShapeIds);
-                    setStatus('Round ready. Press Show.');
+
+                    renderSilhouettes(S.sequence);
+                    setStatus('Round ready');
                     Bridge.send('roundReady');
+
+                    if (TEST_MODE) showActiveShapes();   // ✅ اختبار: أشكال ظاهرة دايمًا
                     break;
                 }
 
                 case 'showPeek': {
-                    const duration = data.durationSeconds || 4;
-                    showShapesOnCards(duration);
-                    setStatus('Look! Shapes revealed...');
+                    showActiveShapes();
+                    setStatus('Look! Memorize...');
+                    if (!TEST_MODE) {
+                        setTimeout(() => {
+                            hideActiveShapes();
+                            Bridge.send('peekEnded');
+                        }, (data.durationSeconds || 4) * 1000);
+                    } else {
+                        Bridge.send('peekEnded');
+                    }
                     break;
                 }
 
                 case 'check': {
                     const cards = collectCardPositions();
-                    const allDetected = cards.every(c => c.detected);
-                    if (!allDetected) {
-                        const missing = cards.filter(c => !c.detected).length;
-                        Bridge.send('checkResult', {
-                            allDetected: false,
-                            missingCount: missing
-                        });
-                        setStatus(missing + ' card(s) not visible — show ALL cards to camera');
+                    const missing = cards.filter(c => !c.detected).length;
+                    if (missing > 0) {
+                        Bridge.send('checkResult', { allDetected: false, missingCount: missing });
+                        setStatus(missing + ' card(s) not visible');
                         return;
                     }
                     cards.sort((a, b) => a.worldX - b.worldX);
-                    const patientOrder = cards.map(c => c.targetIndex);
                     Bridge.send('checkResult', {
                         allDetected: true,
-                        patientOrder: patientOrder,
-                        correctOrder: S.correctOrder,
+                        patientOrder: cards.map(c => c.targetIndex),
                     });
                     setStatus('Checking...');
                     break;
                 }
+
                 case 'showResults': {
-                    // data = { results: [{targetIndex, correct: true/false}, ...] }
-                    const duration = data.durationSeconds || 3;
-                    S.correctOrder.forEach(targetIdx => {
-                        const marker = document.getElementById('shape' + targetIdx);
-                        marker.setAttribute('visible', 'true');
-                        const res = data.results.find(r => r.targetIndex === targetIdx);
-                        if (res) {
-                            const tint = res.correct ? '#FFFFFF' : '#FF0000';
-                            // Add outline ring to indicate correct/wrong
-                            const ring = document.createElement('a-torus');
-                            ring.setAttribute('radius', '0.09');
-                            ring.setAttribute('radius-tubular', '0.008');
-                            ring.setAttribute('color', tint);
-                            ring.setAttribute('position', '0 0.12 0');
-                            ring.setAttribute('rotation', '90 0 0');
-                            ring.className = 'result-ring';
-                            marker.appendChild(ring);
-                        }
+                    showActiveShapes();
+                    (data.results || []).forEach(res => {
+                        const marker = document.getElementById('shape' + res.targetIndex);
+                        if (!marker) return;
+                        const ring = document.createElement('a-torus');
+                        ring.setAttribute('radius', '0.09');
+                        ring.setAttribute('radius-tubular', '0.008');
+                        ring.setAttribute('color', res.correct ? '#FFFFFF' : '#FF0000');
+                        ring.setAttribute('position', '0 0.10 0');
+                        ring.setAttribute('rotation', '90 0 0');
+                        ring.classList.add('result-ring');
+                        marker.appendChild(ring);
                     });
-                    setStatus(data.accuracyPercent + '% correct');
+                    setStatus((data.accuracyPercent || 0) + '% correct');
+
                     if (!TEST_MODE) {
                         setTimeout(() => {
-                            hideAllShapes();
+                            hideActiveShapes();
                             document.querySelectorAll('.result-ring').forEach(r => r.remove());
                             Bridge.send('resultsHidden');
-                        }, duration * 1000);
+                        }, (data.durationSeconds || 3) * 1000);
                     } else {
-                        setStatus('TEST: النتائج ظاهرة — دوس Reset لجولة جديدة');
+                        setStatus('TEST: results shown — press Reset for new round');
                     }
                     break;
                 }
 
                 case 'reset': {
-                    hideAllShapes();
-                    document.querySelectorAll('.result-ring').forEach(r => r.remove());
+                    clearAllShapes();
+                    S.sequence = []; S.assignment = []; S.correctOrder = [];
                     document.getElementById('silhouettes').innerHTML = '';
-                    S.activeShapeIds = [];
-                    S.correctOrder = [];
                     setStatus('Reset');
                     break;
                 }
             }
         };
 
-        // ====== AR READY ======
+        // ============================================================
+        // EVENTS
+        // ============================================================
         sceneEl.addEventListener('loaded', () => {
-            console.log('[JS] Scene loaded');
+            for (let i = 0; i < 5; i++) {
+                const t = document.getElementById('target' + i);
+                if (!t) continue;
+                t.addEventListener('targetFound', () => { tracked[i] = true; });
+                t.addEventListener('targetLost', () => { tracked[i] = false; });
+            }
+            console.log('[JS] scene loaded, tracking listeners ready');
         });
+
         sceneEl.addEventListener('arReady', () => {
             setStatus('AR Ready');
             Bridge.send('arReady');

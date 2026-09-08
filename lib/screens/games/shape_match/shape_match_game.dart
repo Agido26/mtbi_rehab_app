@@ -17,9 +17,6 @@ import '../../../widgets/common/app_scaffold.dart';
 
 enum ShapePhase { loading, ready, playing, results, sessionEnd }
 
-/// ✅ لو نتيجة اختبار test_targets.html طلعت ترتيب مختلف، عدّل هنا بس
-const List<int> kShapeToTarget = [0, 1, 2, 3, 4];
-
 class ShapeMatchGame extends StatefulWidget {
   final Difficulty difficulty;
   const ShapeMatchGame({super.key, required this.difficulty});
@@ -29,6 +26,9 @@ class ShapeMatchGame extends StatefulWidget {
 }
 
 class _ShapeMatchGameState extends State<ShapeMatchGame> {
+  // ===== علم الاختبار الوحيد في Flutter (يقابل TEST_MODE في الـ HTML) =====
+  static const bool kTestMode = true; // ← false لما تخلص الاختبارات
+
   WebViewController? _webController;
   GameSession? _session;
   HttpServer? _localServer;
@@ -47,6 +47,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   final List<double> _roundTimes = [];
   List<String> _sequence = [];
   List<int> _correctOrder = [];
+  DateTime _roundStartedAt = DateTime.now();
 
   late final ShapeMatchConfig _config =
       ShapeMatchConfig.forDifficulty(widget.difficulty);
@@ -172,7 +173,8 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           debugPrint('[WEBVIEW] Resource error: ${error.description}');
         },
       ))
-      ..loadRequest(Uri.parse('http://127.0.0.1:$port/shapematch_game.html'));
+      ..loadRequest(Uri.parse(
+          'http://127.0.0.1:$port/shapematch_game.html?level=${widget.difficulty.name}'));
 
     if (controller.platform is AndroidWebViewController) {
       final androidController = controller.platform as AndroidWebViewController;
@@ -185,7 +187,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   }
 
   // ============================================================
-  // JS MESSAGES
+  // JS MESSAGES (العقد النهائي)
   // ============================================================
   void _handleJSMessage(String message) {
     try {
@@ -194,6 +196,18 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
       final payload = data['data'] ?? {};
 
       switch (event) {
+        case 'cameraInfo':
+          debugPrint('═══════════════════════════════════════');
+          debugPrint('📷 CAMERA INFO');
+          debugPrint('  Requested : ${payload['requested']}');
+          debugPrint('  Actual    : ${payload['actual']}');
+          debugPrint('  FPS       : ${payload['fps']}');
+          debugPrint(
+              '  Focus     : ${payload['focusMode']} (supported: ${payload['supportedFocus']})');
+          debugPrint('  Exposure  : ${payload['exposureMode']}');
+          debugPrint('  Label     : ${payload['label']}');
+          debugPrint('═══════════════════════════════════════');
+          break;
         case 'arReady':
           setState(() {
             _phase = ShapePhase.ready;
@@ -202,7 +216,6 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           break;
 
         case 'roundReady':
-          // JS built the shape meshes — nothing needed here
           break;
 
         case 'peekEnded':
@@ -214,8 +227,9 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
         case 'checkResult':
           final allDetected = payload['allDetected'] as bool;
           if (!allDetected) {
-            setState(() =>
-                _statusText = '📷 Show ALL cards to the camera, then Check');
+            final missing = (payload['missingCount'] as int?) ?? 0;
+            setState(() => _statusText =
+                '📷 $missing card(s) missing — show ALL cards to camera');
             return;
           }
           _roundTimer?.cancel();
@@ -227,17 +241,17 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           final results = <Map<String, dynamic>>[];
           for (int i = 0; i < _correctOrder.length; i++) {
             final t = _correctOrder[i];
-            final posCorrect = patientOrder.indexOf(t) == i;
-            if (posCorrect) correctCount++;
-            results.add({'targetIndex': t, 'correct': posCorrect});
+            final ok = i < patientOrder.length && patientOrder[i] == t;
+            if (ok) correctCount++;
+            results.add({'targetIndex': t, 'correct': ok});
           }
 
           final accuracy = correctCount / _config.cardsCount;
           final points = (_config.pointsPerRound * accuracy).round();
           _score += points;
           _roundAccuracies.add(accuracy);
-          _roundTimes
-              .add((_config.roundTimeLimitSeconds - _secondsLeft).toDouble());
+          _roundTimes.add(
+              DateTime.now().difference(_roundStartedAt).inSeconds.toDouble());
 
           setState(() =>
               _statusText = '${(accuracy * 100).round()}% correct → +$points');
@@ -248,10 +262,17 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
             'accuracyPercent': (accuracy * 100).round(),
           });
           setState(() => _phase = ShapePhase.results);
+
+          // ✅ في وضع الاختبار: الجولة الجاية تلقائياً بعد 5 ثواني
+          if (kTestMode) {
+            Future.delayed(const Duration(seconds: 5), () {
+              if (mounted && _phase == ShapePhase.results) _nextRound();
+            });
+          }
           break;
 
         case 'resultsHidden':
-          _nextRound();
+          if (!kTestMode) _nextRound();
           break;
       }
     } catch (e) {
@@ -264,15 +285,30 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   // ============================================================
   void _startRound() {
     if (_phase != ShapePhase.ready) return;
-
     _currentRound++;
+
+    // 1) ترتيب الأشكال المطلوب (silhouettes فوق)
     _sequence = List<String>.from(_config.shapeIds)..shuffle();
-    _correctOrder = _sequence
-        .map((id) => kShapeToTarget[kAllShapeIds.indexOf(id)])
-        .toList();
+
+    // 2) قاعدة المدى: البطاقات النشطة = [0 .. cardsCount-1]
+    final activeTargets = List<int>.generate(_config.cardsCount, (i) => i);
+
+    // 3) 🎲 توزيع عشوائي للأشكال على البطاقات
+    final shuffledShapes = List<String>.from(_config.shapeIds)..shuffle();
+    final assignment = <Map<String, dynamic>>[];
+    for (int i = 0; i < activeTargets.length; i++) {
+      assignment.add({'target': activeTargets[i], 'shape': shuffledShapes[i]});
+    }
+
+    // 4) correctOrder: أنهي بطاقة شايلة كل شكل في الـ sequence
+    final targetOfShape = <String, int>{
+      for (final a in assignment) a['shape'] as String: a['target'] as int,
+    };
+    _correctOrder = _sequence.map((s) => targetOfShape[s]!).toList();
 
     _peeksLeft = _config.peeksAllowed;
     _secondsLeft = _config.roundTimeLimitSeconds;
+    _roundStartedAt = DateTime.now();
 
     setState(() {
       _phase = ShapePhase.playing;
@@ -280,22 +316,25 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     });
 
     _sendToJS('startRound', {
-      'shapeIds': _sequence,
+      'sequence': _sequence,
+      'assignment': assignment,
       'correctOrder': _correctOrder,
     });
 
     _roundTimer?.cancel();
-    _roundTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      setState(() => _secondsLeft--);
-      if (_secondsLeft <= 0) {
-        t.cancel();
-        _onTimeUp();
-      }
-    });
+    if (!kTestMode) {
+      _roundTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        setState(() => _secondsLeft--);
+        if (_secondsLeft <= 0) {
+          t.cancel();
+          _onTimeUp();
+        }
+      });
+    }
   }
 
   void _peek() {
@@ -428,8 +467,11 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
 
     _session!.endSession();
     final result = _session!.toResult().copyWith(metadata: _buildMetrics());
-    debugPrint(
-        '📊 [METRICS] Score=$_score | AvgAcc=${(_roundAccuracies.isEmpty ? 0 : _roundAccuracies.reduce((a, b) => a + b) / _roundAccuracies.length * 100).toStringAsFixed(0)}% | Peeks=$_peeksUsed');
+    final avgAcc = _roundAccuracies.isEmpty
+        ? 0.0
+        : _roundAccuracies.reduce((a, b) => a + b) / _roundAccuracies.length;
+    debugPrint('📊 [METRICS] Score=$_score | '
+        'AvgAcc=${(avgAcc * 100).toStringAsFixed(0)}% | Peeks=$_peeksUsed');
     await GameDataService().saveResult(result);
   }
 
@@ -515,9 +557,9 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
                     Text('👀 $_peeksLeft',
                         style: const TextStyle(
                             color: Colors.white70, fontSize: 14)),
-                    Text('⏱ $_secondsLeft',
+                    Text(kTestMode ? '⏱ ∞' : '⏱ $_secondsLeft',
                         style: TextStyle(
-                            color: _secondsLeft <= 10
+                            color: !kTestMode && _secondsLeft <= 10
                                 ? Colors.redAccent
                                 : Colors.white70,
                             fontSize: 14)),

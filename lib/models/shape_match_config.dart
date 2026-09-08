@@ -94,13 +94,7 @@ extension DifficultyExt on Difficulty {
 
 /// Shape identifiers — MUST match order in the .mind file.
 /// targetIndex 0 = circle, 1 = star, 2 = triangle, 3 = heart, 4 = square
-const List<String> kAllShapeIds = [
-  'circle',
-  'star',
-  'triangle',
-  'heart',
-  'square'
-];
+const List<String> kAllShapeIds = ['star', 'arrow', 'cat', 'dog', 'diamond'];
 
 /// Colors used for silhouettes and 3D models
 const Map<String, Color> kShapeColors = {

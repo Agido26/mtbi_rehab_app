@@ -216,6 +216,18 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       final payload = data['data'] ?? {};
 
       switch (event) {
+        case 'cameraInfo':
+          debugPrint('═══════════════════════════════════════');
+          debugPrint('📷 CAMERA INFO');
+          debugPrint('  Requested : ${payload['requested']}');
+          debugPrint('  Actual    : ${payload['actual']}');
+          debugPrint('  FPS       : ${payload['fps']}');
+          debugPrint(
+              '  Focus     : ${payload['focusMode']} (supported: ${payload['supportedFocus']})');
+          debugPrint('  Exposure  : ${payload['exposureMode']}');
+          debugPrint('  Label     : ${payload['label']}');
+          debugPrint('═══════════════════════════════════════');
+          break;
         case 'arReady':
           setState(() {
             _phase = GamePhase.ready;
