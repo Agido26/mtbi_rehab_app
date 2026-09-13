@@ -31,9 +31,9 @@ extension DifficultyExt on Difficulty {
       case Difficulty.easy:
         return ['circle', 'triangle', 'cube'];
       case Difficulty.medium:
-        return ['circle', 'triangle', 'cube', 'star'];
+        return ['circle', 'triangle', 'cube', 'diamond'];
       case Difficulty.hard:
-        return ['cat', 'dog', 'star', 'diamond'];
+        return ['circle', 'ring', 'diamond', 'bar'];
     }
   }
 
@@ -68,7 +68,7 @@ extension DifficultyExt on Difficulty {
       case Difficulty.medium:
         return 4;
       case Difficulty.hard:
-        return 2;
+        return 4;
     }
   }
 
@@ -90,7 +90,7 @@ extension DifficultyExt on Difficulty {
       case Difficulty.medium:
         return 45;
       case Difficulty.hard:
-        return 25;
+        return 30;
     }
   }
 

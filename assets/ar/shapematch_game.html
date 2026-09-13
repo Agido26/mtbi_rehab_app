@@ -133,7 +133,7 @@
     </div>
 
     <script>
-        const TEST_MODE = true;
+        const TEST_MODE = false;
         const MIND_FILES = {
             easy: { src: './markers/shapematch_markers.mind', maxTrack: 3 },
             medium: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
@@ -142,17 +142,13 @@
 
         // ✅ Includes both primitives (Easy/Medium) and GLBs (Hard)
         const SHAPE_DEFS = [
-            // هندسية (Primitives)
-            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08, size: 3.0 },
-            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08, size: 3.0 },
-            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08, size: 3.0 },
-            // مجسمات GLB
-            { id: 'star', assetId: 'starModel', emoji: '⭐', scale: 0.3, y: 0.10, rotation: '180 0 0', size: 1.0 },
-            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 2.0, y: 0.10, rotation: '0 150 0', size: 1.0 },
-            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 2.0, y: 0.10, rotation: '0 0 0', size: 1.0 },
-            { id: 'diamond', assetId: 'diamondModel', emoji: '💎', scale: 0.6, y: 0.10, rotation: '0 0 0', size: 1.0 },
+            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08, size: 2 },
+            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08, size: 2 },
+            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08, size: 2 },
+            { id: 'diamond', type: 'octahedron', color: '#FDD835', emoji: '◆', y: 0.10, size: 2 },
+            { id: 'ring', type: 'torus', color: '#CE93D8', emoji: '○', y: 0.10, size: 2 },
+            { id: 'bar', type: 'cylinder', color: '#8D6E63', emoji: '▮', y: 0.08, size: 2 },
         ];
-
         const Bridge = {
             send(event, data) {
                 if (window.FlutterApp && window.FlutterApp.postMessage) {
@@ -168,6 +164,17 @@
 
         let S = { sequence: [], assignment: [], correctOrder: [], showing: false, hideSequence: false };
         const tracked = { 0: false, 1: false, 2: false, 3: false, 4: false };
+        function worldXOf(t) {
+            const v = new AFRAME.THREE.Vector3();
+            document.getElementById('target' + t).object3D.getWorldPosition(v);
+            return v.x;
+        }
+        setInterval(() => {
+            const now = Date.now();
+            (S.correctOrder || []).forEach(t => {
+                if (tracked[t]) posMemory[t] = { x: worldXOf(t), time: now };
+            });
+        }, 200);
         const sceneEl = document.querySelector('a-scene');
 
         const level = new URLSearchParams(window.location.search).get('level') || 'hard';
@@ -198,24 +205,28 @@
         // ✅ Handles both primitives and GLBs
         function buildShape(def) {
             const el = document.createElement('a-entity');
-
-            // ✅ نطبق الحجم الموحد على الكيان (entity) بالكامل
             const size = def.size || 1;
             el.setAttribute('scale', size + ' ' + size + ' ' + size);
 
-            if (def.assetId) {
-                // للـ GLB: نحتفظ بالـ scale الداخلي والـ rotation الخاص بيه
-                const s = def.scale || 1;
-                el.innerHTML = '<a-entity gltf-model="#' + def.assetId +
-                    '" scale="' + s + ' ' + s + ' ' + s +
-                    '" rotation="' + (def.rotation || '0 0 0') + '"></a-entity>';
-            } else {
-                // للـ Primitives
-                switch (def.type) {
-                    case 'sphere': el.innerHTML = '<a-sphere radius="0.06" color="' + def.color + '"></a-sphere>'; break;
-                    case 'cone': el.innerHTML = '<a-cone radius-bottom="0.07" radius-top="0" height="0.12" color="' + def.color + '"></a-cone>'; break;
-                    case 'box': el.innerHTML = '<a-box width="0.1" height="0.1" depth="0.1" color="' + def.color + '"></a-box>'; break;
-                }
+            switch (def.type) {
+                case 'sphere':
+                    el.innerHTML = '<a-sphere radius="0.06" color="' + def.color + '"></a-sphere>';
+                    break;
+                case 'cone':
+                    el.innerHTML = '<a-cone radius-bottom="0.07" radius-top="0" height="0.12" color="' + def.color + '"></a-cone>';
+                    break;
+                case 'box':
+                    el.innerHTML = '<a-box width="0.1" height="0.1" depth="0.1" color="' + def.color + '"></a-box>';
+                    break;
+                case 'octahedron':
+                    el.innerHTML = '<a-octahedron radius="0.07" color="' + def.color + '"></a-octahedron>';
+                    break;
+                case 'torus':
+                    el.innerHTML = '<a-torus radius="0.06" radius-tubular="0.02" color="' + def.color + '"></a-torus>';
+                    break;
+                case 'cylinder':
+                    el.innerHTML = '<a-cylinder radius="0.04" height="0.12" color="' + def.color + '"></a-cylinder>';
+                    break;
             }
             el.setAttribute('position', '0 ' + def.y + ' 0');
             return el;
@@ -301,15 +312,39 @@
                 }
 
                 case 'check': {
-                    const cards = collectCardPositions();
-                    const missing = cards.filter(c => !c.detected).length;
+                    // ✅ حكم لحظي فقط — لا ذاكرة، لا استدلال، لا تخمين
+                    const cards = [];
+                    let missing = 0;
+
+                    S.correctOrder.forEach(t => {
+                        if (tracked[t]) {
+                            cards.push({ targetIndex: t, worldX: worldXOf(t) });
+                        } else {
+                            missing++;
+                        }
+                    });
+
                     if (missing > 0) {
+                        const attempt = (data && data.attempt) ? data.attempt : 1;
+                        if (attempt <= 3) {
+                            // 🤫 إعادة محاولة صامتة (تمتص الاختفاء اللحظي)
+                            setStatus('Hold steady... (' + attempt + '/3)');
+                            setTimeout(() => {
+                                window.receiveFromFlutter('check', { attempt: attempt + 1 });
+                            }, 500);
+                            return;
+                        }
+                        // بعد 1.5 ثانية لسه ناقصة → بدون حكم، بدون خصم
                         Bridge.send('checkResult', { allDetected: false, missingCount: missing });
-                        setStatus(missing + ' card(s) not visible');
+                        setStatus(missing + ' card(s) not visible — show ALL cards');
                         return;
                     }
+
                     cards.sort((a, b) => a.worldX - b.worldX);
-                    Bridge.send('checkResult', { allDetected: true, patientOrder: cards.map(c => c.targetIndex) });
+                    Bridge.send('checkResult', {
+                        allDetected: true,
+                        patientOrder: cards.map(c => c.targetIndex),
+                    });
                     setStatus('Checking...');
                     break;
                 }
@@ -329,17 +364,8 @@
                         ring.classList.add('result-ring');
                         marker.appendChild(ring);
                     });
-                    setStatus((data.accuracyPercent || 0) + '% correct');
-
-                    if (!TEST_MODE) {
-                        setTimeout(() => {
-                            hideActiveShapes();
-                            document.querySelectorAll('.result-ring').forEach(r => r.remove());
-                            Bridge.send('resultsHidden');
-                        }, (data.durationSeconds || 3) * 1000);
-                    } else {
-                        setStatus('TEST: results shown — press Reset for new round');
-                    }
+                    // ✅ النتائج تفضل ظاهرة لحد ما زر Next يبعت 'reset'
+                    setStatus((data.accuracyPercent || 0) + '% correct — press Next');
                     break;
                 }
 

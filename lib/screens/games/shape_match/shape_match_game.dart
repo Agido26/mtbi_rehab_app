@@ -28,7 +28,7 @@ class ShapeMatchGame extends StatefulWidget {
 class _ShapeMatchGameState extends State<ShapeMatchGame>
     with WidgetsBindingObserver {
   // ===== علم الاختبار الوحيد في Flutter (يقابل TEST_MODE في الـ HTML) =====
-  static const bool kTestMode = true; // ← false لما تخلص الاختبارات
+  static const bool kTestMode = false; // ← false لما تخلص الاختبارات
 
   WebViewController? _webController;
   GameSession? _session;
@@ -259,11 +259,13 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
         case 'checkResult':
           final allDetected = payload['allDetected'] as bool;
           if (!allDetected) {
+            // ✅ بدون حكم وبخصم — المريض يعيد المحاولة وقت ما يجهز
             final missing = (payload['missingCount'] as int?) ?? 0;
             setState(() => _statusText =
-                '📷 $missing card(s) missing — show ALL cards to camera');
+                '📷 $missing card(s) missing — show ALL cards, then Check');
             return;
           }
+
           _roundTimer?.cancel();
 
           final patientOrder =
@@ -285,8 +287,8 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
           _roundTimes.add(
               DateTime.now().difference(_roundStartedAt).inSeconds.toDouble());
 
-          setState(() =>
-              _statusText = '${(accuracy * 100).round()}% correct → +$points');
+          setState(() => _statusText =
+              '${(accuracy * 100).round()}% correct → +$points — press Next');
 
           _sendToJS('showResults', {
             'results': results,
@@ -294,17 +296,6 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
             'accuracyPercent': (accuracy * 100).round(),
           });
           setState(() => _phase = ShapePhase.results);
-
-          // ✅ في وضع الاختبار: الجولة الجاية تلقائياً بعد 5 ثواني
-          if (kTestMode) {
-            Future.delayed(const Duration(seconds: 5), () {
-              if (mounted && _phase == ShapePhase.results) _nextRound();
-            });
-          }
-          break;
-
-        case 'resultsHidden':
-          if (!kTestMode) _nextRound();
           break;
       }
     } catch (e) {
@@ -391,7 +382,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
     _roundTimes.add(_config.roundTimeLimitSeconds.toDouble());
     setState(() {
       _phase = ShapePhase.results;
-      _statusText = "⏰ Time's up!";
+      _statusText = "⏰ Time's up! — press Next";
     });
     _sendToJS('showResults', {
       'results': _correctOrder
@@ -613,6 +604,10 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
                       _phase == ShapePhase.playing, _check,
                       iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
                   const SizedBox(width: 6),
+                  _buildButton("Next", Icons.arrow_forward, Colors.purple,
+                      _phase == ShapePhase.results, _nextRound,
+                      iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
+                  const SizedBox(width: 6),
                   _buildButton("Reset", Icons.refresh, Colors.red,
                       _phase != ShapePhase.loading, _resetSession,
                       iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
@@ -668,16 +663,50 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
                 ),
                 const SizedBox(height: 12),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildButton("Start", Icons.play_arrow, Colors.green,
-                        _phase == ShapePhase.ready, _startRound),
-                    _buildButton("Show", Icons.visibility, Colors.orange,
-                        _phase == ShapePhase.playing && _peeksLeft > 0, _peek),
-                    _buildButton("Check", Icons.check_circle, Colors.blue,
-                        _phase == ShapePhase.playing, _check),
-                    _buildButton("Reset", Icons.refresh, Colors.red,
-                        _phase != ShapePhase.loading, _resetSession),
+                    Expanded(
+                      child: _buildButton("Start", Icons.play_arrow,
+                          Colors.green, _phase == ShapePhase.ready, _startRound,
+                          iconSize: 20, paddingH: 4, paddingV: 8, fontSize: 10),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildButton(
+                          "Show",
+                          Icons.visibility,
+                          Colors.orange,
+                          _phase == ShapePhase.playing && _peeksLeft > 0,
+                          _peek,
+                          iconSize: 20,
+                          paddingH: 4,
+                          paddingV: 8,
+                          fontSize: 10),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildButton("Check", Icons.check_circle,
+                          Colors.blue, _phase == ShapePhase.playing, _check,
+                          iconSize: 20, paddingH: 4, paddingV: 8, fontSize: 10),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildButton(
+                          "Next",
+                          Icons.arrow_forward,
+                          Colors.purple,
+                          _phase == ShapePhase.results,
+                          _nextRound,
+                          iconSize: 20,
+                          paddingH: 4,
+                          paddingV: 8,
+                          fontSize: 10),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildButton("Reset", Icons.refresh, Colors.red,
+                          _phase != ShapePhase.loading, _resetSession,
+                          iconSize: 20, paddingH: 4, paddingV: 8, fontSize: 10),
+                    ),
                   ],
                 ),
               ],
@@ -704,6 +733,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: Container(
+          alignment: Alignment.center, // ✅ محتوى الزر في الوسط دايمًا
           padding:
               EdgeInsets.symmetric(horizontal: paddingH, vertical: paddingV),
           decoration: BoxDecoration(
