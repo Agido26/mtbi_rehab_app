@@ -112,7 +112,7 @@
                 <a-asset-item id="starModel" src="./shapes/star.glb"></a-asset-item>
                 <a-asset-item id="catModel" src="./shapes/cat.glb"></a-asset-item>
                 <a-asset-item id="dogModel" src="./shapes/dog.glb"></a-asset-item>
-                <a-asset-item id="diamondModel" src="./shapes/diamond.glb"></a-asset-item>
+                <a-asset-item id="diamondModel" src="./shapes/gem.glb"></a-asset-item>
             </a-assets>
 
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -142,13 +142,15 @@
 
         // ✅ Includes both primitives (Easy/Medium) and GLBs (Hard)
         const SHAPE_DEFS = [
-            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08 },
-            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08 },
-            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08 },
-            { id: 'star', assetId: 'starModel', emoji: '⭐', scale: 0.3, y: 0.10, rotation: '180 0 0' },
-            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 1.0, y: 0.10, rotation: '0 150 0' },
-            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 1.0, y: 0.10, rotation: '0 0 0' },
-            { id: 'diamond', assetId: 'diamondModel', emoji: '💎', scale: 0.6, y: 0.10, rotation: '0 0 0' },
+            // هندسية (Primitives)
+            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08, size: 3.0 },
+            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08, size: 3.0 },
+            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08, size: 3.0 },
+            // مجسمات GLB
+            { id: 'star', assetId: 'starModel', emoji: '⭐', scale: 0.3, y: 0.10, rotation: '180 0 0', size: 1.0 },
+            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 2.0, y: 0.10, rotation: '0 150 0', size: 1.0 },
+            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 2.0, y: 0.10, rotation: '0 0 0', size: 1.0 },
+            { id: 'diamond', assetId: 'diamondModel', emoji: '💎', scale: 0.6, y: 0.10, rotation: '0 0 0', size: 1.0 },
         ];
 
         const Bridge = {
@@ -196,11 +198,19 @@
         // ✅ Handles both primitives and GLBs
         function buildShape(def) {
             const el = document.createElement('a-entity');
+
+            // ✅ نطبق الحجم الموحد على الكيان (entity) بالكامل
+            const size = def.size || 1;
+            el.setAttribute('scale', size + ' ' + size + ' ' + size);
+
             if (def.assetId) {
+                // للـ GLB: نحتفظ بالـ scale الداخلي والـ rotation الخاص بيه
+                const s = def.scale || 1;
                 el.innerHTML = '<a-entity gltf-model="#' + def.assetId +
-                    '" scale="' + def.scale + ' ' + def.scale + ' ' + def.scale +
+                    '" scale="' + s + ' ' + s + ' ' + s +
                     '" rotation="' + (def.rotation || '0 0 0') + '"></a-entity>';
             } else {
+                // للـ Primitives
                 switch (def.type) {
                     case 'sphere': el.innerHTML = '<a-sphere radius="0.06" color="' + def.color + '"></a-sphere>'; break;
                     case 'cone': el.innerHTML = '<a-cone radius-bottom="0.07" radius-top="0" height="0.12" color="' + def.color + '"></a-cone>'; break;

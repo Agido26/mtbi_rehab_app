@@ -25,7 +25,8 @@ class ShapeMatchGame extends StatefulWidget {
   State<ShapeMatchGame> createState() => _ShapeMatchGameState();
 }
 
-class _ShapeMatchGameState extends State<ShapeMatchGame> {
+class _ShapeMatchGameState extends State<ShapeMatchGame>
+    with WidgetsBindingObserver {
   // ===== علم الاختبار الوحيد في Flutter (يقابل TEST_MODE في الـ HTML) =====
   static const bool kTestMode = true; // ← false لما تخلص الاختبارات
 
@@ -55,7 +56,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   @override
   void initState() {
     super.initState();
-    // ✅ السماح بالدوران: landscape بيدي كاميرا أوسع للماركرز
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -66,10 +67,34 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     _roundTimer?.cancel();
     _localServer?.close(force: true);
     super.dispose();
+  }
+
+  // ✅ عند قلب الشاشة: MindAR ما بيتأقلمش مع الأبعاد الجديدة → إعادة تهيئة نظيفة
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!_isInitialized) return;
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      _roundTimer?.cancel();
+
+      // لو كنا وسط جولة، ألغها عشان Start يعيد نفس الجولة مش اللي بعدها
+      if (_phase == ShapePhase.playing || _phase == ShapePhase.results) {
+        _currentRound = _currentRound > 0 ? _currentRound - 1 : 0;
+      }
+
+      _webController?.reload();
+      setState(() {
+        _phase = ShapePhase.loading;
+        _statusText = 'Re-initializing camera for new orientation...';
+      });
+    });
   }
 
   // ============================================================
@@ -512,6 +537,9 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   // ============================================================
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     if (!_isInitialized) {
       return AppScaffold(
         title: 'Shape Match AR',
@@ -528,16 +556,75 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
       );
     }
 
-    return AppScaffold(
-      title: 'Shape Match AR',
-      body: Stack(children: [
-        WebViewWidget(controller: _webController!),
-        _buildOverlay(),
-      ]),
-    );
+    final body = Stack(children: [
+      WebViewWidget(controller: _webController!),
+      _buildOverlay(isLandscape),
+    ]);
+
+    // ✅ landscape: بدون AppBar نهائياً — الكاميرا تاخد كل الشاشة
+    if (isLandscape) {
+      return Scaffold(backgroundColor: Colors.black, body: body);
+    }
+
+    return AppScaffold(title: 'Shape Match AR', body: body);
   }
 
-  Widget _buildOverlay() {
+  Widget _buildOverlay(bool isLandscape) {
+    // ✅ landscape: شريط واحد رفيع (معلومات + حالة + أزرار في سطر واحد)
+    if (isLandscape) {
+      return SafeArea(
+        child: Column(
+          children: [
+            const Spacer(),
+            Container(
+              margin: const EdgeInsets.all(6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.75),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    'R$_currentRound/${_config.roundsCount} • $_score pts • 👀$_peeksLeft • ${kTestMode ? "∞" : "⏱$_secondsLeft"}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _statusText,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildButton("Start", Icons.play_arrow, Colors.green,
+                      _phase == ShapePhase.ready, _startRound,
+                      iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
+                  const SizedBox(width: 6),
+                  _buildButton("Show", Icons.visibility, Colors.orange,
+                      _phase == ShapePhase.playing && _peeksLeft > 0, _peek,
+                      iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
+                  const SizedBox(width: 6),
+                  _buildButton("Check", Icons.check_circle, Colors.blue,
+                      _phase == ShapePhase.playing, _check,
+                      iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
+                  const SizedBox(width: 6),
+                  _buildButton("Reset", Icons.refresh, Colors.red,
+                      _phase != ShapePhase.loading, _resetSession,
+                      iconSize: 16, paddingH: 8, paddingV: 4, fontSize: 9),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ✅ portrait: التصميم الحالي زي ما هو
     return SafeArea(
       child: Column(
         children: [
@@ -601,14 +688,24 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
     );
   }
 
-  Widget _buildButton(String label, IconData icon, Color color, bool enabled,
-      VoidCallback onTap) {
+  Widget _buildButton(
+    String label,
+    IconData icon,
+    Color color,
+    bool enabled,
+    VoidCallback onTap, {
+    double iconSize = 22,
+    double paddingH = 16,
+    double paddingV = 10,
+    double fontSize = 11,
+  }) {
     return Opacity(
       opacity: enabled ? 1.0 : 0.4,
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding:
+              EdgeInsets.symmetric(horizontal: paddingH, vertical: paddingV),
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10),
@@ -616,12 +713,12 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Colors.white, size: 22),
+              Icon(icon, color: Colors.white, size: iconSize),
               const SizedBox(height: 2),
               Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: Colors.white,
-                      fontSize: 11,
+                      fontSize: fontSize,
                       fontWeight: FontWeight.bold)),
             ],
           ),
