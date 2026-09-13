@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="./aframe.min.js"></script>
     <script>
-        // ===== Camera Quality Hook (تشخيص + حقنة قيود) =====
+        // ===== Camera Quality Hook (Fixed: sends on arReady) =====
         (function () {
+            window.__cameraInfo = null;
             const origGM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
             navigator.mediaDevices.getUserMedia = async function (constraints) {
-                // ✅ الحقنة: نطلب 1080p + فوكس مستمر
                 const injected = {
                     ...constraints,
                     video: {
@@ -23,31 +23,28 @@
                         ],
                     },
                 };
-
-                const stream = await origGM(injected);
-                const track = stream.getVideoTracks()[0];
-                const settings = track.getSettings();
-                const caps = track.getCapabilities ? track.getCapabilities() : {};
-
-                const info = {
-                    requested: { width: 1920, height: 1080 },
-                    actual: { width: settings.width, height: settings.height },
-                    fps: settings.frameRate,
-                    focusMode: settings.focusMode || 'n/a',
-                    supportedFocus: caps.focusMode || 'n/a',
-                    exposureMode: settings.exposureMode || 'n/a',
-                    label: track.label,
-                };
-
-                // نرسل لـ Flutter للطباعة في الـ terminal
-                if (window.FlutterApp && window.FlutterApp.postMessage) {
-                    window.FlutterApp.postMessage(JSON.stringify({
-                        event: 'cameraInfo', data: info
-                    }));
+                try {
+                    const stream = await origGM(injected);
+                    const track = stream.getVideoTracks()[0];
+                    const settings = track.getSettings();
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+                    window.__cameraInfo = {
+                        requested: { width: 1920, height: 1080 },
+                        actual: { width: settings.width, height: settings.height },
+                        fps: settings.frameRate,
+                        focusMode: settings.focusMode || 'n/a',
+                        supportedFocus: caps.focusMode || 'n/a',
+                        exposureMode: settings.exposureMode || 'n/a',
+                        label: track.label,
+                    };
+                    console.log('[CAMERA] ✅ Info captured:', window.__cameraInfo);
+                    return stream;
+                } catch (e) {
+                    console.error('[CAMERA] ❌ Error:', e);
+                    throw e;
                 }
-                console.log('[CAMERA] settings:', info);
-                return stream;
             };
+            console.log('[CAMERA] ✅ getUserMedia hook installed');
         })();
     </script>
     <script src="./mindar-image-aframe.prod.js" type="module"></script>
@@ -75,7 +72,6 @@
             font-size: 14px;
         }
 
-        /* ===== شريط الـ silhouettes فوق ===== */
         #silhouettes {
             position: fixed;
             top: 16px;
@@ -99,11 +95,7 @@
             line-height: 1.2;
             display: inline-block;
             filter: brightness(0);
-            /* ✅ مؤقت: emojis سوداء — لحد ما تجهز PNGs */
         }
-
-        /* لما تجهز صور الـ PNG السوداء، استبدل الـ span بـ img وفعّل ده:
-        .silhouette-img { width: 48px; height: 48px; object-fit: contain; } */
     </style>
 </head>
 
@@ -111,62 +103,51 @@
     <div id="status">Status: starting…</div>
     <div id="silhouettes"></div>
     <div class="example-container">
-        <!-- ✅ default = hard (5 targets) — الـ JS بيعدّل maxTrack حسب المستوى قبل بدء التحميل -->
         <a-scene
-            mindar-image="imageTargetSrc: ./markers/shapematch_markers.mind; autoStart: true; maxTrack: 5; uiLoading: no; uiScanning: no; uiError: no;"
+            mindar-image="imageTargetSrc: ./markers/shapematch_markers.mind; autoStart: true; maxTrack: 4; uiLoading: no; uiScanning: no; uiError: no;"
             embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
 
             <a-assets>
                 <a-asset-item id="starModel" src="./shapes/star.glb"></a-asset-item>
-                <a-asset-item id="arrowModel" src="./shapes/arrow.glb"></a-asset-item>
                 <a-asset-item id="catModel" src="./shapes/cat.glb"></a-asset-item>
                 <a-asset-item id="dogModel" src="./shapes/dog.glb"></a-asset-item>
                 <a-asset-item id="diamondModel" src="./shapes/diamond.glb"></a-asset-item>
             </a-assets>
 
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
             <a-entity light="type: ambient; intensity: 0.7"></a-entity>
             <a-entity light="type: directional; intensity: 1.2" position="1 2 2"></a-entity>
 
-            <a-entity id="target0" mindar-image-target="targetIndex: 0">
-                <a-entity id="shape0" visible="false"></a-entity>
-            </a-entity>
-            <a-entity id="target1" mindar-image-target="targetIndex: 1">
-                <a-entity id="shape1" visible="false"></a-entity>
-            </a-entity>
-            <a-entity id="target2" mindar-image-target="targetIndex: 2">
-                <a-entity id="shape2" visible="false"></a-entity>
-            </a-entity>
-            <a-entity id="target3" mindar-image-target="targetIndex: 3">
-                <a-entity id="shape3" visible="false"></a-entity>
-            </a-entity>
-            <a-entity id="target4" mindar-image-target="targetIndex: 4">
-                <a-entity id="shape4" visible="false"></a-entity>
-            </a-entity>
+            <a-entity id="target0" mindar-image-target="targetIndex: 0"><a-entity id="shape0"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target1" mindar-image-target="targetIndex: 1"><a-entity id="shape1"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target2" mindar-image-target="targetIndex: 2"><a-entity id="shape2"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target3" mindar-image-target="targetIndex: 3"><a-entity id="shape3"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target4" mindar-image-target="targetIndex: 4"><a-entity id="shape4"
+                    visible="false"></a-entity></a-entity>
         </a-scene>
     </div>
 
     <script>
-        // ============================================================
-        // CONFIG
-        // ============================================================
-        const TEST_MODE = true;   // ← false لما تخلص الاختبارات (بيوقف المؤقتات والإخفاء)
-
-        // ✅ طبقة التوجيه: لو بكرة عملت ملف مصغّر لمستوى، عدّل سطره هنا بس
+        const TEST_MODE = true;
         const MIND_FILES = {
             easy: { src: './markers/shapematch_markers.mind', maxTrack: 3 },
             medium: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
-            hard: { src: './markers/shapematch_markers.mind', maxTrack: 5 },
+            hard: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
         };
 
-        // ✅ عقد الربط: الترتيب هنا = targetIndex = ترتيب kAllShapeIds في Flutter
+        // ✅ Includes both primitives (Easy/Medium) and GLBs (Hard)
         const SHAPE_DEFS = [
+            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08 },
+            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08 },
+            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08 },
             { id: 'star', assetId: 'starModel', emoji: '⭐', scale: 0.3, y: 0.10, rotation: '180 0 0' },
-            { id: 'arrow', assetId: 'arrowModel', emoji: '➡️', scale: 0.6, y: 0.10, rotation: '180 0 0' },
-            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 1, y: 0.10, rotation: '0 150 0' },
-            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 1, y: 0.10, rotation: '0 0 0' },
+            { id: 'cat', assetId: 'catModel', emoji: '🐱', scale: 1.0, y: 0.10, rotation: '0 150 0' },
+            { id: 'dog', assetId: 'dogModel', emoji: '🐶', scale: 1.0, y: 0.10, rotation: '0 0 0' },
             { id: 'diamond', assetId: 'diamondModel', emoji: '💎', scale: 0.6, y: 0.10, rotation: '0 0 0' },
         ];
 
@@ -183,20 +164,10 @@
             console.log('[STATUS] ' + t);
         };
 
-        // ============================================================
-        // STATE
-        // ============================================================
-        let S = {
-            sequence: [],     // ترتيب الأشكال المطلوب (silhouettes)
-            assignment: [],   // [{target, shape}] التوزيع العشوائي
-            correctOrder: [], // targetIndex لكل موقع في الـ sequence
-            showing: false,
-        };
+        let S = { sequence: [], assignment: [], correctOrder: [], showing: false, hideSequence: false };
         const tracked = { 0: false, 1: false, 2: false, 3: false, 4: false };
-
         const sceneEl = document.querySelector('a-scene');
 
-        // ===== المستوى من الـ URL → maxTrack (نفس الملف الواحد) =====
         const level = new URLSearchParams(window.location.search).get('level') || 'hard';
         const mindCfg = MIND_FILES[level] || MIND_FILES.hard;
         sceneEl.setAttribute('mindar-image',
@@ -205,12 +176,7 @@
             '; uiLoading: no; uiScanning: no; uiError: no;');
         console.log('[JS] level=' + level + ' mind=' + mindCfg.src + ' maxTrack=' + mindCfg.maxTrack);
 
-        // ============================================================
-        // HELPERS
-        // ============================================================
-        function shapeDefById(id) {
-            return SHAPE_DEFS.find(d => d.id === id);
-        }
+        function shapeDefById(id) { return SHAPE_DEFS.find(d => d.id === id); }
 
         function renderSilhouettes(shapeIds) {
             const container = document.getElementById('silhouettes');
@@ -227,11 +193,20 @@
             });
         }
 
+        // ✅ Handles both primitives and GLBs
         function buildShape(def) {
             const el = document.createElement('a-entity');
-            el.innerHTML = '<a-entity gltf-model="#' + def.assetId +
-                '" scale="' + def.scale + ' ' + def.scale + ' ' + def.scale +
-                '" rotation="' + (def.rotation || '0 0 0') + '"></a-entity>';
+            if (def.assetId) {
+                el.innerHTML = '<a-entity gltf-model="#' + def.assetId +
+                    '" scale="' + def.scale + ' ' + def.scale + ' ' + def.scale +
+                    '" rotation="' + (def.rotation || '0 0 0') + '"></a-entity>';
+            } else {
+                switch (def.type) {
+                    case 'sphere': el.innerHTML = '<a-sphere radius="0.06" color="' + def.color + '"></a-sphere>'; break;
+                    case 'cone': el.innerHTML = '<a-cone radius-bottom="0.07" radius-top="0" height="0.12" color="' + def.color + '"></a-cone>'; break;
+                    case 'box': el.innerHTML = '<a-box width="0.1" height="0.1" depth="0.1" color="' + def.color + '"></a-box>'; break;
+                }
+            }
             el.setAttribute('position', '0 ' + def.y + ' 0');
             return el;
         }
@@ -274,15 +249,13 @@
             return results;
         }
 
-        // ============================================================
-        // COMMANDS FROM FLUTTER (العقد النهائي)
-        // ============================================================
         window.receiveFromFlutter = function (command, data) {
             switch (command) {
                 case 'startRound': {
                     S.sequence = data.sequence || [];
                     S.assignment = data.assignment || [];
                     S.correctOrder = data.correctOrder || [];
+                    S.hideSequence = data.hideSequenceAfterPeek === true;
 
                     clearAllShapes();
                     S.assignment.forEach(item => {
@@ -295,7 +268,7 @@
                     setStatus('Round ready');
                     Bridge.send('roundReady');
 
-                    if (TEST_MODE) showActiveShapes();   // ✅ اختبار: أشكال ظاهرة دايمًا
+                    if (TEST_MODE) showActiveShapes();
                     break;
                 }
 
@@ -305,6 +278,10 @@
                     if (!TEST_MODE) {
                         setTimeout(() => {
                             hideActiveShapes();
+                            if (S.hideSequence) {
+                                renderSilhouettes([]);
+                                setStatus('From memory now!');
+                            }
                             Bridge.send('peekEnded');
                         }, (data.durationSeconds || 4) * 1000);
                     } else {
@@ -322,15 +299,13 @@
                         return;
                     }
                     cards.sort((a, b) => a.worldX - b.worldX);
-                    Bridge.send('checkResult', {
-                        allDetected: true,
-                        patientOrder: cards.map(c => c.targetIndex),
-                    });
+                    Bridge.send('checkResult', { allDetected: true, patientOrder: cards.map(c => c.targetIndex) });
                     setStatus('Checking...');
                     break;
                 }
 
                 case 'showResults': {
+                    renderSilhouettes(S.sequence); // Show sequence again for feedback
                     showActiveShapes();
                     (data.results || []).forEach(res => {
                         const marker = document.getElementById('shape' + res.targetIndex);
@@ -368,9 +343,6 @@
             }
         };
 
-        // ============================================================
-        // EVENTS
-        // ============================================================
         sceneEl.addEventListener('loaded', () => {
             for (let i = 0; i < 5; i++) {
                 const t = document.getElementById('target' + i);
@@ -384,7 +356,13 @@
         sceneEl.addEventListener('arReady', () => {
             setStatus('AR Ready');
             Bridge.send('arReady');
+            // ✅ Send camera info now that Flutter channel is ready
+            if (window.__cameraInfo) {
+                console.log('[CAMERA] Sending info to Flutter');
+                Bridge.send('cameraInfo', window.__cameraInfo);
+            }
         });
+
         sceneEl.addEventListener('arError', () => {
             setStatus('AR Error');
             Bridge.send('arError', { message: 'AR Error' });

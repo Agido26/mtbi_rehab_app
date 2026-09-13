@@ -25,16 +25,19 @@ extension DifficultyExt on Difficulty {
     }
   }
 
-  int get cardsCount {
+  /// 🎯 أشكال كل مستوى
+  List<String> get shapeIds {
     switch (this) {
       case Difficulty.easy:
-        return 3;
+        return ['circle', 'triangle', 'cube'];
       case Difficulty.medium:
-        return 4;
+        return ['circle', 'triangle', 'cube', 'star'];
       case Difficulty.hard:
-        return 5;
+        return ['cat', 'dog', 'star', 'diamond'];
     }
   }
+
+  int get cardsCount => shapeIds.length;
 
   int get roundsCount {
     switch (this) {
@@ -65,7 +68,7 @@ extension DifficultyExt on Difficulty {
       case Difficulty.medium:
         return 4;
       case Difficulty.hard:
-        return 3;
+        return 2;
     }
   }
 
@@ -87,27 +90,17 @@ extension DifficultyExt on Difficulty {
       case Difficulty.medium:
         return 45;
       case Difficulty.hard:
-        return 30;
+        return 25;
     }
   }
+
+  /// 🔥 الصعب بس: الترتيب يختفي بعد الـ peek
+  bool get hideSequenceAfterPeek => this == Difficulty.hard;
 }
-
-/// Shape identifiers — MUST match order in the .mind file.
-/// targetIndex 0 = circle, 1 = star, 2 = triangle, 3 = heart, 4 = square
-const List<String> kAllShapeIds = ['star', 'arrow', 'cat', 'dog', 'diamond'];
-
-/// Colors used for silhouettes and 3D models
-const Map<String, Color> kShapeColors = {
-  'circle': Color(0xFFE53935), // red
-  'star': Color(0xFFFDD835), // yellow
-  'triangle': Color(0xFF43A047), // green
-  'heart': Color(0xFFE91E63), // pink
-  'square': Color(0xFF1E88E5), // blue
-};
 
 class ShapeMatchConfig {
   final Difficulty difficulty;
-  final List<String> shapeIds; // subset of kAllShapeIds for this level
+  final List<String> shapeIds;
   final int cardsCount;
   final int roundsCount;
   final int peeksAllowed;
@@ -115,6 +108,7 @@ class ShapeMatchConfig {
   final int showResultsDurationSeconds;
   final int pointsPerRound;
   final int roundTimeLimitSeconds;
+  final bool hideSequenceAfterPeek;
 
   const ShapeMatchConfig({
     required this.difficulty,
@@ -126,20 +120,21 @@ class ShapeMatchConfig {
     required this.showResultsDurationSeconds,
     required this.pointsPerRound,
     required this.roundTimeLimitSeconds,
+    required this.hideSequenceAfterPeek,
   });
 
   factory ShapeMatchConfig.forDifficulty(Difficulty difficulty) {
-    final count = difficulty.cardsCount;
     return ShapeMatchConfig(
       difficulty: difficulty,
-      shapeIds: kAllShapeIds.sublist(0, count),
-      cardsCount: count,
+      shapeIds: difficulty.shapeIds,
+      cardsCount: difficulty.cardsCount,
       roundsCount: difficulty.roundsCount,
       peeksAllowed: difficulty.peeksAllowed,
       peekDurationSeconds: difficulty.peekDurationSeconds,
       showResultsDurationSeconds: 3,
       pointsPerRound: difficulty.pointsPerRound,
       roundTimeLimitSeconds: difficulty.roundTimeLimitSeconds,
+      hideSequenceAfterPeek: difficulty.hideSequenceAfterPeek,
     );
   }
 }

@@ -55,11 +55,18 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
   @override
   void initState() {
     super.initState();
+    // ✅ السماح بالدوران: landscape بيدي كاميرا أوسع للماركرز
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _initialize();
   }
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     _roundTimer?.cancel();
     _localServer?.close(force: true);
     super.dispose();
@@ -319,6 +326,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame> {
       'sequence': _sequence,
       'assignment': assignment,
       'correctOrder': _correctOrder,
+      'hideSequenceAfterPeek': _config.hideSequenceAfterPeek, // ✅ الجديد
     });
 
     _roundTimer?.cancel();
