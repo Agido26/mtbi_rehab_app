@@ -29,7 +29,6 @@ class MetricsAnalyzer {
   static ShapeMatchMetrics analyzeShapeMatch(List<GameResult> results) {
     if (results.isEmpty) return ShapeMatchMetrics.empty();
 
-    // ترتيب من الأقدم للأحدث
     final sorted = List<GameResult>.from(results)
       ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
 
@@ -53,7 +52,6 @@ class MetricsAnalyzer {
           [];
       final peeks = (meta['peeksUsed'] as num?)?.toInt() ?? 0;
 
-      // دقة الجلسة
       final sessionAcc = roundAccs.isEmpty
           ? 0.0
           : roundAccs.reduce((a, b) => a + b) / roundAccs.length;
@@ -62,18 +60,15 @@ class MetricsAnalyzer {
       totalAccuracySum += sessionAcc;
       totalRounds += roundAccs.length;
 
-      // متوسط زمن الجولة
       final avgTime = roundTimes.isEmpty
           ? 0.0
           : roundTimes.reduce((a, b) => a + b) / roundTimes.length;
       avgTimeTrend
           .add(TrendPoint(x: i.toDouble(), y: avgTime, label: 'S${i + 1}'));
 
-      // Peeks used
       peeksTrend.add(
           TrendPoint(x: i.toDouble(), y: peeks.toDouble(), label: 'S${i + 1}'));
 
-      // 🧠 Fatigue score: دقة النصف الثاني vs الأول (سلبي = إرهاق)
       if (roundAccs.length >= 2) {
         final half = roundAccs.length ~/ 2;
         final firstHalf = roundAccs.sublist(0, half);
@@ -81,11 +76,10 @@ class MetricsAnalyzer {
         final firstAvg = firstHalf.reduce((a, b) => a + b) / firstHalf.length;
         final secondAvg =
             secondHalf.reduce((a, b) => a + b) / secondHalf.length;
-        fatigueScores.add(secondAvg - firstAvg); // سالب = تعب
+        fatigueScores.add(secondAvg - firstAvg);
       }
     }
 
-    // 📈 التحسن: آخر 3 جلسات vs أول 3
     double improvement = 0;
     if (sorted.length >= 6) {
       final first3 = accuracyTrend.take(3).map((p) => p.y).toList();
@@ -126,6 +120,7 @@ class MetricsAnalyzer {
     final accuracyTrend = <TrendPoint>[];
     final responseTimeTrend = <TrendPoint>[];
     final variabilityTrend = <TrendPoint>[];
+    final fatigueTrend = <TrendPoint>[];
     final spatialErrors = <String, int>{'left': 0, 'center': 0, 'right': 0};
     double totalRTSum = 0;
     int totalRTCount = 0;
@@ -146,6 +141,7 @@ class MetricsAnalyzer {
               ?.map((e) => (e as num).toDouble())
               .toList() ??
           [];
+
       if (rts.isNotEmpty) {
         final avgRT = rts.reduce((a, b) => a + b) / rts.length;
         responseTimeTrend
@@ -153,16 +149,27 @@ class MetricsAnalyzer {
         totalRTSum += avgRT;
         totalRTCount++;
 
-        // تذبذب الاستجابة (std deviation) — marker mTBI معروف
+        // تذبذب الاستجابة (std deviation)
         final variance = rts
                 .map((rt) => (rt - avgRT) * (rt - avgRT))
                 .reduce((a, b) => a + b) /
             rts.length;
         variabilityTrend.add(TrendPoint(
           x: i.toDouble(),
-          y: variance > 0 ? variance * 100 : 0, // normalized
+          y: variance > 0 ? variance * 100 : 0,
           label: 'S${i + 1}',
         ));
+
+        // 🧠 Cognitive Fatigue: FI = متوسط RT النصف الثاني ÷ النصف الأول
+        final halfF = rts.length ~/ 2;
+        final firstHalf = rts.sublist(0, halfF);
+        final secondHalf = rts.sublist(halfF);
+        final firstAvg = firstHalf.reduce((a, b) => a + b) / firstHalf.length;
+        final secondAvg =
+            secondHalf.reduce((a, b) => a + b) / secondHalf.length;
+        final fi = firstAvg > 0 ? secondAvg / firstAvg : 1.0;
+        fatigueTrend
+            .add(TrendPoint(x: i.toDouble(), y: fi, label: 'S${i + 1}'));
       }
 
       // Spatial errors
@@ -171,22 +178,30 @@ class MetricsAnalyzer {
               .toList() ??
           [];
       for (final pos in errors) {
-        if (pos == 'left')
+        if (pos == 'left') {
           spatialErrors['left'] = (spatialErrors['left'] ?? 0) + 1;
-        if (pos == 'center')
+        }
+        if (pos == 'center') {
           spatialErrors['center'] = (spatialErrors['center'] ?? 0) + 1;
-        if (pos == 'right')
+        }
+        if (pos == 'right') {
           spatialErrors['right'] = (spatialErrors['right'] ?? 0) + 1;
+        }
       }
     }
 
-    // Intra-Session Variability (ISV) — متوسط تذبذب كل الجلسات
     final avgISV = variabilityTrend.isEmpty
         ? 0.0
         : variabilityTrend.map((p) => p.y).reduce((a, b) => a + b) /
             variabilityTrend.length;
 
-    // Spatial bias: لو يسار >> يمين بشكل واضح = potential neglect
+    final avgFI = fatigueTrend.isEmpty
+        ? 1.0
+        : fatigueTrend.map((p) => p.y).reduce((a, b) => a + b) /
+            fatigueTrend.length;
+
+    final latestFI = fatigueTrend.isEmpty ? 1.0 : fatigueTrend.last.y;
+
     final leftErrors = spatialErrors['left'] ?? 0;
     final rightErrors = spatialErrors['right'] ?? 0;
     final spatialBias = rightErrors > 0
@@ -204,6 +219,9 @@ class MetricsAnalyzer {
       responseTimeTrend: responseTimeTrend,
       avgResponseTime: totalRTCount == 0 ? 0 : totalRTSum / totalRTCount,
       intraSessionVariability: avgISV,
+      fatigueIndexTrend: fatigueTrend,
+      avgFatigueIndex: avgFI,
+      latestFatigueIndex: latestFI,
       spatialErrors: spatialErrors,
       hasSpatialBias: hasSpatialBias,
       spatialBiasRatio: spatialBias,
@@ -235,8 +253,8 @@ class ShapeMatchMetrics {
   final List<TrendPoint> accuracyTrend;
   final List<TrendPoint> avgTimeTrend;
   final List<TrendPoint> peeksTrend;
-  final double fatigueScore; // سالب = إرهاق داخل الجلسة
-  final double improvementPct; // % تحسن من البداية للنهاية
+  final double fatigueScore;
+  final double improvementPct;
   final DateTime? lastPlayed;
 
   ShapeMatchMetrics({
@@ -268,6 +286,9 @@ class CupShuffleMetrics {
   final List<TrendPoint> responseTimeTrend;
   final double avgResponseTime;
   final double intraSessionVariability;
+  final List<TrendPoint> fatigueIndexTrend;
+  final double avgFatigueIndex;
+  final double latestFatigueIndex;
   final Map<String, int> spatialErrors;
   final bool hasSpatialBias;
   final double spatialBiasRatio;
@@ -280,6 +301,9 @@ class CupShuffleMetrics {
     required this.responseTimeTrend,
     required this.avgResponseTime,
     required this.intraSessionVariability,
+    required this.fatigueIndexTrend,
+    required this.avgFatigueIndex,
+    required this.latestFatigueIndex,
     required this.spatialErrors,
     required this.hasSpatialBias,
     required this.spatialBiasRatio,
@@ -293,6 +317,9 @@ class CupShuffleMetrics {
         responseTimeTrend: [],
         avgResponseTime: 0,
         intraSessionVariability: 0,
+        fatigueIndexTrend: [],
+        avgFatigueIndex: 1.0,
+        latestFatigueIndex: 1.0,
         spatialErrors: {'left': 0, 'center': 0, 'right': 0},
         hasSpatialBias: false,
         spatialBiasRatio: 1.0,
