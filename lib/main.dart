@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'screens/doctor_home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_screen.dart';
 import 'services/auth_service.dart';
@@ -18,7 +19,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2563EB), // Nice blue
+          seedColor: const Color(0xFF2563EB),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
@@ -34,6 +35,8 @@ class MyApp extends StatelessWidget {
   }
 }
 
+enum _AuthRole { none, patient, doctor }
+
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -41,20 +44,39 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
+class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
   bool _isLoading = true;
-  bool _isLoggedIn = false;
+  _AuthRole _role = _AuthRole.none;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkAuth();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ✅ لما التطبيق يتقفل تماماً → logout → المرة الجاية يفتح من Login
+    if (state == AppLifecycleState.detached) {
+      AuthService().logout();
+    }
+  }
+
   Future<void> _checkAuth() async {
-    final loggedIn = await AuthService().isLoggedIn();
+    final auth = AuthService();
+    final doctorLoggedIn = await auth.isDoctorLoggedIn();
+    final patientLoggedIn = doctorLoggedIn ? false : await auth.isLoggedIn();
     setState(() {
-      _isLoggedIn = loggedIn;
+      _role = doctorLoggedIn
+          ? _AuthRole.doctor
+          : (patientLoggedIn ? _AuthRole.patient : _AuthRole.none);
       _isLoading = false;
     });
   }
@@ -66,6 +88,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return _isLoggedIn ? const MainScreen() : const LoginScreen();
+    switch (_role) {
+      case _AuthRole.doctor:
+        return const DoctorHomeScreen();
+      case _AuthRole.patient:
+        return const MainScreen();
+      case _AuthRole.none:
+        return const LoginScreen();
+    }
   }
 }

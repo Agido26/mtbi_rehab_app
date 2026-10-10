@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
+import '../models/patient.dart';
 import '../models/game_result.dart';
-import '../services/auth_service.dart';
 import '../services/game_data_service.dart';
 import '../services/metrics_analyzer.dart';
 import '../widgets/charts/spatial_error_chart.dart';
 import '../widgets/charts/trend_line_chart.dart';
 
 class ClinicalReportScreen extends StatefulWidget {
-  const ClinicalReportScreen({super.key});
-
+  final Patient patient;
+  const ClinicalReportScreen({super.key, required this.patient});
   @override
   State<ClinicalReportScreen> createState() => _ClinicalReportScreenState();
 }
@@ -36,9 +35,7 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
   }
 
   Future<void> _load() async {
-    final patient = AuthService().currentPatient;
-    if (patient == null) return;
-    final data = await _service.getProgressData(patient.id);
+    final data = await _service.getProgressData(widget.patient.id);
     setState(() {
       _byGame = data;
       _loading = false;
@@ -108,7 +105,7 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
   // HEADER (ظاهر في كل التابّات)
   // ============================================================
   Widget _buildPatientHeader() {
-    final patient = AuthService().currentPatient;
+    final patient = widget.patient;
     final sm = _byGame[GameType.shapeMatch];
     final cs = _byGame[GameType.cupShuffle];
     final smM = sm != null && sm.isNotEmpty

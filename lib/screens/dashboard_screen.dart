@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/game_result.dart';
 import '../services/auth_service.dart';
 import '../services/game_data_service.dart';
-import '../screens/clinical_report_screen.dart';
 import '../widgets/common/app_scaffold.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -224,7 +223,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
 
     // Last 5 sessions average
-    final last5 = sorted.length > 5 ? sorted.sublist(sorted.length - 5) : sorted;
+    final last5 =
+        sorted.length > 5 ? sorted.sublist(sorted.length - 5) : sorted;
     final avgAcc = last5.isEmpty
         ? 0.0
         : last5.map((r) => r.accuracy).reduce((a, b) => a + b) / last5.length;
@@ -273,9 +273,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         _buildRecentSessionsList(results),
 
         const SizedBox(height: 16),
-
-        // Clinical Report Button
-        _buildClinicianEntry(),
       ],
     );
   }
@@ -294,7 +291,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
 
     // Last 5 sessions average
-    final last5 = sorted.length > 5 ? sorted.sublist(sorted.length - 5) : sorted;
+    final last5 =
+        sorted.length > 5 ? sorted.sublist(sorted.length - 5) : sorted;
     final avgAcc = last5.isEmpty
         ? 0.0
         : last5.map((r) => r.accuracy).reduce((a, b) => a + b) / last5.length;
@@ -343,9 +341,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         _buildRecentSessionsList(results),
 
         const SizedBox(height: 16),
-
-        // Clinical Report Button
-        _buildClinicianEntry(),
       ],
     );
   }
@@ -612,21 +607,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClinicianEntry() {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.medical_services, color: Colors.indigo),
-        title: const Text('Clinical Report'),
-        subtitle: const Text('For clinician review'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ClinicalReportScreen()),
         ),
       ),
     );

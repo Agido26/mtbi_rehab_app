@@ -3,12 +3,14 @@ class Patient {
   final String username;
   final DateTime createdAt;
   final DateTime lastLogin;
+  final String? doctorId; // ✅ الطبيب المتابع (null للمرضى القدامى قبل التبني)
 
   Patient({
     required this.id,
     required this.username,
     required this.createdAt,
     required this.lastLogin,
+    this.doctorId,
   });
 
   factory Patient.fromJson(Map<String, dynamic> json) {
@@ -17,6 +19,7 @@ class Patient {
       username: json['username'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastLogin: DateTime.parse(json['lastLogin'] as String),
+      doctorId: json['doctorId'] as String?,
     );
   }
 
@@ -26,6 +29,7 @@ class Patient {
       'username': username,
       'createdAt': createdAt.toIso8601String(),
       'lastLogin': lastLogin.toIso8601String(),
+      'doctorId': doctorId,
     };
   }
 
@@ -34,12 +38,14 @@ class Patient {
     String? username,
     DateTime? createdAt,
     DateTime? lastLogin,
+    String? doctorId,
   }) {
     return Patient(
       id: id ?? this.id,
       username: username ?? this.username,
       createdAt: createdAt ?? this.createdAt,
       lastLogin: lastLogin ?? this.lastLogin,
+      doctorId: doctorId ?? this.doctorId,
     );
   }
 }
