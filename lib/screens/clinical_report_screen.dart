@@ -20,6 +20,8 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
   Map<GameType, List<GameResult>> _byGame = {};
   bool _loading = true;
   late final TabController _tabController;
+  int _limitSM = 6;
+  int _limitCS = 6;
 
   @override
   void initState() {
@@ -198,7 +200,12 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
           unitLabel: 'Working memory dependence — decreasing = stronger memory',
         ),
         const SizedBox(height: 12),
-        _buildRecentSessions('Recent Sessions — Shape Match', raw),
+        _buildRecentSessions(
+          'Recent Sessions — Shape Match',
+          raw,
+          limit: _limitSM,
+          onShowMore: () => setState(() => _limitSM += 6),
+        ),
       ],
     );
   }
@@ -251,7 +258,12 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
         const SizedBox(height: 12),
         SpatialErrorChart(errors: cs.spatialErrors),
         const SizedBox(height: 12),
-        _buildRecentSessions('Recent Sessions — Cup Shuffle', raw),
+        _buildRecentSessions(
+          'Recent Sessions — Cup Shuffle',
+          raw,
+          limit: _limitCS,
+          onShowMore: () => setState(() => _limitCS += 6),
+        ),
       ],
     );
   }
@@ -388,10 +400,16 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
     );
   }
 
-  Widget _buildRecentSessions(String title, List<GameResult> results) {
+  Widget _buildRecentSessions(
+    String title,
+    List<GameResult> results, {
+    required int limit,
+    required VoidCallback onShowMore,
+  }) {
     final recent = List<GameResult>.from(results)
       ..sort((a, b) => b.playedAt.compareTo(a.playedAt));
-    final shown = recent.take(6).toList();
+    final shown = recent.take(limit).toList();
+    final hasMore = recent.length > limit; // ✅ safe check
 
     return Card(
       child: Padding(
@@ -399,9 +417,16 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+                Text('${recent.length} total',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              ],
+            ),
             const SizedBox(height: 8),
             if (shown.isEmpty)
               Padding(
@@ -414,7 +439,8 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
                 final meta = r.metadata ?? {};
                 final extra = <String>[];
                 if (meta['difficulty'] != null) {
-                  extra.add(meta['difficulty'].toString());
+                  final d = meta['difficulty'].toString();
+                  extra.add(d == 'easy' ? 'Standard' : d); // ✅ rename display
                 }
                 if (meta['peeksUsed'] != null) {
                   extra.add('peeks: ${meta['peeksUsed']}');
@@ -444,6 +470,14 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
                   ),
                 );
               }),
+            if (hasMore)
+              Center(
+                child: TextButton.icon(
+                  onPressed: onShowMore,
+                  icon: const Icon(Icons.expand_more, size: 18),
+                  label: Text('Show more (${recent.length - limit} older)'),
+                ),
+              ),
           ],
         ),
       ),

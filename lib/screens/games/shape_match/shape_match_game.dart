@@ -51,8 +51,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
   DateTime _roundStartedAt = DateTime.now();
 
   late final ShapeMatchConfig _config =
-      ShapeMatchConfig.forDifficulty(widget.difficulty);
-
+      ShapeMatchConfig.forDifficulty(Difficulty.easy); // ✅ the only mode
   @override
   void initState() {
     super.initState();
@@ -439,7 +438,7 @@ class _ShapeMatchGameState extends State<ShapeMatchGame>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Mode: ${_config.difficulty.displayName}',
+            Text('Mode: ${_config.difficulty.shapeMatchDisplayName}',
                 style: TextStyle(
                     color: _config.difficulty.color,
                     fontWeight: FontWeight.bold)),

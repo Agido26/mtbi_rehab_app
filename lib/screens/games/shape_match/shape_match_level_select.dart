@@ -6,76 +6,18 @@ import 'shape_match_game.dart';
 class ShapeMatchLevelSelect extends StatelessWidget {
   const ShapeMatchLevelSelect({super.key});
 
-  void _startGame(BuildContext context, Difficulty difficulty) {
+  void _startGame(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ShapeMatchGame(difficulty: difficulty),
-      ),
-    );
-  }
-
-  Widget _buildLevelCard(
-    BuildContext context,
-    Difficulty difficulty,
-    Color color,
-    IconData icon,
-  ) {
-    final config = ShapeMatchConfig.forDifficulty(difficulty);
-
-    return GestureDetector(
-      onTap: () => _startGame(context, difficulty),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color, width: 2),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: Colors.white, size: 32),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    difficulty.displayName,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${config.cardsCount} shapes • ${config.roundsCount} rounds • ${config.peeksAllowed} peeks',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, color: color),
-          ],
-        ),
+        builder: (_) => const ShapeMatchGame(difficulty: Difficulty.easy),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final config = ShapeMatchConfig.forDifficulty(Difficulty.easy);
+
     return AppScaffold(
       title: 'Shape Match',
       body: Column(
@@ -90,23 +32,57 @@ class ShapeMatchLevelSelect extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          _buildLevelCard(
-            context,
-            Difficulty.easy,
-            Colors.green,
-            Icons.sentiment_satisfied,
-          ),
-          _buildLevelCard(
-            context,
-            Difficulty.medium,
-            Colors.orange,
-            Icons.sentiment_neutral,
-          ),
-          _buildLevelCard(
-            context,
-            Difficulty.hard,
-            Colors.red,
-            Icons.sentiment_very_dissatisfied,
+          // ✅ Single "Standard" mode card (no medium/hard)
+          GestureDetector(
+            onTap: () => _startGame(context),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.green, width: 2),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.sentiment_satisfied,
+                        color: Colors.white, size: 32),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Standard',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${config.cardsCount} shapes • ${config.roundsCount} rounds • ${config.peeksAllowed} peeks',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios, color: Colors.green),
+                ],
+              ),
+            ),
           ),
         ],
       ),

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 enum Difficulty { easy, medium, hard }
 
 extension DifficultyExt on Difficulty {
+  /// ✅ Shape Match has ONE mode only — display name (no "what's next?" questions)
+  String get shapeMatchDisplayName => 'Standard';
   String get displayName {
     switch (this) {
       case Difficulty.easy:

@@ -17,6 +17,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<GameType, List<GameResult>> _resultsByGame = {};
   bool _isLoading = true;
   late final TabController _tabController;
+  final Map<GameType, int> _sessionLimits = {
+    GameType.cupShuffle: 5,
+    GameType.shapeMatch: 5,
+  };
 
   @override
   void initState() {
@@ -270,7 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         const SizedBox(height: 16),
 
         // Recent Sessions
-        _buildRecentSessionsList(results),
+        _buildRecentSessionsList(results, GameType.cupShuffle),
 
         const SizedBox(height: 16),
       ],
@@ -338,7 +342,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         const SizedBox(height: 16),
 
         // Recent Sessions
-        _buildRecentSessionsList(results),
+        _buildRecentSessionsList(results, GameType.cupShuffle),
 
         const SizedBox(height: 16),
       ],
@@ -522,10 +526,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildRecentSessionsList(List<GameResult> results) {
+  Widget _buildRecentSessionsList(List<GameResult> results, GameType type) {
     final recent = List<GameResult>.from(results)
       ..sort((a, b) => b.playedAt.compareTo(a.playedAt));
-    final shown = recent.take(5).toList();
+
+    final limit = _sessionLimits[type] ?? 5;
+    final shown = recent.take(limit).toList();
+    final hasMore = recent.length > limit; // ✅ only show button if data exists
 
     return Card(
       child: Padding(
@@ -533,8 +540,16 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Recent Sessions',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Recent Sessions',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text('${recent.length} total',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              ],
+            ),
             const SizedBox(height: 8),
             ...shown.map((r) => ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -555,20 +570,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                       size: 20,
                     ),
                   ),
-                  title: Text(
-                    'Score ${r.score}',
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
+                  title: Text('Score ${r.score}',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
                   subtitle: Text(
                     '${(r.accuracy * 100).toStringAsFixed(0)}% • ${r.durationSeconds}s',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
-                  trailing: Text(
-                    '${r.playedAt.day}/${r.playedAt.month}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
+                  trailing: Text('${r.playedAt.day}/${r.playedAt.month}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500])),
                 )),
+            if (hasMore)
+              Center(
+                child: TextButton.icon(
+                  onPressed: () =>
+                      setState(() => _sessionLimits[type] = limit + 5),
+                  icon: const Icon(Icons.expand_more, size: 18),
+                  label: Text('Show more (${recent.length - limit} older)'),
+                ),
+              ),
           ],
         ),
       ),
