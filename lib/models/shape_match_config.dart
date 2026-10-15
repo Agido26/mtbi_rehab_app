@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 enum Difficulty { easy, medium, hard }
 
 extension DifficultyExt on Difficulty {
+  /// ✅ Shape Match has ONE mode only — display name (no "what's next?" questions)
+  String get shapeMatchDisplayName => 'Standard';
   String get displayName {
     switch (this) {
       case Difficulty.easy:
@@ -14,7 +16,76 @@ extension DifficultyExt on Difficulty {
     }
   }
 
-  int get timeLimitSeconds {
+  Color get color {
+    switch (this) {
+      case Difficulty.easy:
+        return Colors.green;
+      case Difficulty.medium:
+        return Colors.orange;
+      case Difficulty.hard:
+        return Colors.red;
+    }
+  }
+
+  /// 🎯 أشكال كل مستوى
+  List<String> get shapeIds {
+    switch (this) {
+      case Difficulty.easy:
+        return ['circle', 'triangle', 'cube'];
+      case Difficulty.medium:
+        return ['circle', 'triangle', 'cube', 'diamond'];
+      case Difficulty.hard:
+        return ['circle', 'ring', 'diamond', 'bar'];
+    }
+  }
+
+  int get cardsCount => shapeIds.length;
+
+  int get roundsCount {
+    switch (this) {
+      case Difficulty.easy:
+        return 5;
+      case Difficulty.medium:
+        return 4;
+      case Difficulty.hard:
+        return 3;
+    }
+  }
+
+  int get peeksAllowed {
+    switch (this) {
+      case Difficulty.easy:
+        return 3;
+      case Difficulty.medium:
+        return 2;
+      case Difficulty.hard:
+        return 1;
+    }
+  }
+
+  int get peekDurationSeconds {
+    switch (this) {
+      case Difficulty.easy:
+        return 5;
+      case Difficulty.medium:
+        return 4;
+      case Difficulty.hard:
+        return 4;
+    }
+  }
+
+  int get pointsPerRound {
+    switch (this) {
+      case Difficulty.easy:
+        return 10;
+      case Difficulty.medium:
+        return 12;
+      case Difficulty.hard:
+        return 15;
+    }
+  }
+
+  int get roundTimeLimitSeconds {
     switch (this) {
       case Difficulty.easy:
         return 60;
@@ -25,130 +96,47 @@ extension DifficultyExt on Difficulty {
     }
   }
 
-  int get maxWrongAttempts {
-    switch (this) {
-      case Difficulty.easy:
-        return 10;
-      case Difficulty.medium:
-        return 8;
-      case Difficulty.hard:
-        return 5;
-    }
-  }
-}
-
-/// Defines a shape using either built-in painter OR custom images
-class GameShape {
-  final String id;
-  final String displayName;
-
-  // For built-in painted shapes
-  final ShapeType? type;
-  final Color? color;
-
-  // For custom images
-  final String? imagePath;
-  final String? shadowPath;
-
-  const GameShape.builtIn({
-    required this.id,
-    required this.displayName,
-    required this.type,
-    required this.color,
-  })  : imagePath = null,
-        shadowPath = null;
-
-  const GameShape.custom({
-    required this.id,
-    required this.displayName,
-    required this.imagePath,
-    required this.shadowPath,
-  })  : type = null,
-        color = null;
-
-  bool get isCustomImage => imagePath != null;
-}
-
-/// Built-in shape types (for CustomPaint)
-enum ShapeType {
-  circle,
-  square,
-  triangle,
-  star,
-  diamond,
-  hexagon,
-  heart,
-  cross,
-  moon,
-  arrow,
+  /// 🔥 الصعب بس: الترتيب يختفي بعد الـ peek
+  bool get hideSequenceAfterPeek => this == Difficulty.hard;
 }
 
 class ShapeMatchConfig {
   final Difficulty difficulty;
-  final List<GameShape> shapes;
-  final int timeLimitSeconds;
-  final int maxWrongAttempts;
+  final List<String> shapeIds;
+  final int cardsCount;
+  final int roundsCount;
+  final int peeksAllowed;
+  final int peekDurationSeconds;
+  final int showResultsDurationSeconds;
+  final int pointsPerRound;
+  final int roundTimeLimitSeconds;
+  final bool hideSequenceAfterPeek;
 
   const ShapeMatchConfig({
     required this.difficulty,
-    required this.shapes,
-    required this.timeLimitSeconds,
-    required this.maxWrongAttempts,
+    required this.shapeIds,
+    required this.cardsCount,
+    required this.roundsCount,
+    required this.peeksAllowed,
+    required this.peekDurationSeconds,
+    required this.showResultsDurationSeconds,
+    required this.pointsPerRound,
+    required this.roundTimeLimitSeconds,
+    required this.hideSequenceAfterPeek,
   });
 
   factory ShapeMatchConfig.forDifficulty(Difficulty difficulty) {
-    // CHOOSE YOUR SHAPES HERE:
-    // Option 1: Built-in painted shapes (works immediately)
-    final builtInShapes = [
-      const GameShape.builtIn(
-          id: 'circle',
-          displayName: 'Circle',
-          type: ShapeType.circle,
-          color: Colors.red),
-      const GameShape.builtIn(
-          id: 'square',
-          displayName: 'Square',
-          type: ShapeType.square,
-          color: Colors.blue),
-      const GameShape.builtIn(
-          id: 'triangle',
-          displayName: 'Triangle',
-          type: ShapeType.triangle,
-          color: Colors.green),
-      const GameShape.builtIn(
-          id: 'star',
-          displayName: 'Star',
-          type: ShapeType.star,
-          color: Colors.orange),
-      const GameShape.builtIn(
-          id: 'heart',
-          displayName: 'Heart',
-          type: ShapeType.heart,
-          color: Colors.pink),
-    ];
-
-    // Option 2: Custom images (uncomment when you have images)
-    /*
-    final customShapes = [
-      GameShape.custom(id: 'circle', displayName: 'Circle', imagePath: 'assets/shapes/circle/shape.png', shadowPath: 'assets/shapes/circle/shadow.png'),
-      GameShape.custom(id: 'star', displayName: 'Star', imagePath: 'assets/shapes/star/shape.png', shadowPath: 'assets/shapes/star/shadow.png'),
-      // Add more...
-    ];
-    */
-
-    final count = difficulty == Difficulty.easy
-        ? 3
-        : difficulty == Difficulty.medium
-            ? 4
-            : 5;
-    final selected = builtInShapes.sublist(0, count);
-    // final selected = customShapes.sublist(0, count); // Use this for custom images
-
     return ShapeMatchConfig(
       difficulty: difficulty,
-      shapes: selected,
-      timeLimitSeconds: difficulty.timeLimitSeconds,
-      maxWrongAttempts: difficulty.maxWrongAttempts,
+      shapeIds: difficulty.shapeIds,
+      cardsCount: difficulty.cardsCount,
+      roundsCount: difficulty.roundsCount,
+      peeksAllowed: difficulty.peeksAllowed,
+      peekDurationSeconds: difficulty.peekDurationSeconds,
+      showResultsDurationSeconds: 3,
+      pointsPerRound: difficulty.pointsPerRound,
+      roundTimeLimitSeconds: difficulty.roundTimeLimitSeconds,
+      hideSequenceAfterPeek: difficulty.hideSequenceAfterPeek,
     );
   }
 }

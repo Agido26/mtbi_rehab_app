@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="./aframe.min.js"></script>
+    <script>
+        // ===== Camera Quality Hook (Fixed: sends on arReady) =====
+        (function () {
+            window.__cameraInfo = null;
+            const origGM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+            navigator.mediaDevices.getUserMedia = async function (constraints) {
+                const injected = {
+                    ...constraints,
+                    video: {
+                        ...(typeof constraints.video === 'object' ? constraints.video : {}),
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        advanced: [
+                            { focusMode: 'continuous' },
+                            { exposureMode: 'continuous' },
+                            { whiteBalanceMode: 'continuous' },
+                        ],
+                    },
+                };
+                try {
+                    const stream = await origGM(injected);
+                    const track = stream.getVideoTracks()[0];
+                    const settings = track.getSettings();
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+                    window.__cameraInfo = {
+                        requested: { width: 1920, height: 1080 },
+                        actual: { width: settings.width, height: settings.height },
+                        fps: settings.frameRate,
+                        focusMode: settings.focusMode || 'n/a',
+                        supportedFocus: caps.focusMode || 'n/a',
+                        exposureMode: settings.exposureMode || 'n/a',
+                        label: track.label,
+                    };
+                    console.log('[CAMERA] ✅ Info captured:', window.__cameraInfo);
+                    return stream;
+                } catch (e) {
+                    console.error('[CAMERA] ❌ Error:', e);
+                    throw e;
+                }
+            };
+            console.log('[CAMERA] ✅ getUserMedia hook installed');
+        })();
+    </script>
+    <script src="./mindar-image-aframe.prod.js" type="module"></script>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        .example-container {
+            overflow: hidden;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 9999;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            font-family: sans-serif;
+            font-size: 14px;
+        }
+
+        #silhouettes {
+            position: fixed;
+            top: 16px;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            pointer-events: none;
+        }
+
+        .chip {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 4px 10px;
+        }
+
+        .silhouette {
+            font-size: 34px;
+            line-height: 1.2;
+            display: inline-block;
+            filter: brightness(0);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="status">Status: starting…</div>
+    <div id="silhouettes"></div>
+    <div class="example-container">
+        <a-scene
+            mindar-image="imageTargetSrc: ./markers/shapematch_markers.mind; autoStart: true; maxTrack: 4; uiLoading: no; uiScanning: no; uiError: no;"
+            embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights"
+            vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+
+            <a-assets>
+                <a-asset-item id="starModel" src="./shapes/star.glb"></a-asset-item>
+                <a-asset-item id="catModel" src="./shapes/cat.glb"></a-asset-item>
+                <a-asset-item id="dogModel" src="./shapes/dog.glb"></a-asset-item>
+                <a-asset-item id="diamondModel" src="./shapes/gem.glb"></a-asset-item>
+            </a-assets>
+
+            <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+            <a-entity light="type: ambient; intensity: 0.7"></a-entity>
+            <a-entity light="type: directional; intensity: 1.2" position="1 2 2"></a-entity>
+
+            <a-entity id="target0" mindar-image-target="targetIndex: 0"><a-entity id="shape0"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target1" mindar-image-target="targetIndex: 1"><a-entity id="shape1"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target2" mindar-image-target="targetIndex: 2"><a-entity id="shape2"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target3" mindar-image-target="targetIndex: 3"><a-entity id="shape3"
+                    visible="false"></a-entity></a-entity>
+            <a-entity id="target4" mindar-image-target="targetIndex: 4"><a-entity id="shape4"
+                    visible="false"></a-entity></a-entity>
+        </a-scene>
+    </div>
+
+    <script>
+        const TEST_MODE = false;
+        const MIND_FILES = {
+            easy: { src: './markers/shapematch_markers.mind', maxTrack: 3 },
+            medium: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
+            hard: { src: './markers/shapematch_markers.mind', maxTrack: 4 },
+        };
+
+        // ✅ Includes both primitives (Easy/Medium) and GLBs (Hard)
+        const SHAPE_DEFS = [
+            { id: 'circle', type: 'sphere', color: '#E53935', emoji: '●', y: 0.08, size: 2 },
+            { id: 'triangle', type: 'cone', color: '#43A047', emoji: '▲', y: 0.08, size: 2 },
+            { id: 'cube', type: 'box', color: '#1E88E5', emoji: '■', y: 0.08, size: 2 },
+            { id: 'diamond', type: 'octahedron', color: '#FDD835', emoji: '◆', y: 0.10, size: 2 },
+            { id: 'ring', type: 'torus', color: '#CE93D8', emoji: '○', y: 0.10, size: 2 },
+            { id: 'bar', type: 'cylinder', color: '#8D6E63', emoji: '▮', y: 0.08, size: 2 },
+        ];
+        const Bridge = {
+            send(event, data) {
+                if (window.FlutterApp && window.FlutterApp.postMessage) {
+                    window.FlutterApp.postMessage(JSON.stringify({ event, data: data || {} }));
+                }
+            },
+        };
+
+        const setStatus = (t) => {
+            document.getElementById('status').textContent = 'Status: ' + t;
+            console.log('[STATUS] ' + t);
+        };
+
+        let S = { sequence: [], assignment: [], correctOrder: [], showing: false, hideSequence: false };
+        const tracked = { 0: false, 1: false, 2: false, 3: false, 4: false };
+        function worldXOf(t) {
+            const v = new AFRAME.THREE.Vector3();
+            document.getElementById('target' + t).object3D.getWorldPosition(v);
+            return v.x;
+        }
+        setInterval(() => {
+            const now = Date.now();
+            (S.correctOrder || []).forEach(t => {
+                if (tracked[t]) posMemory[t] = { x: worldXOf(t), time: now };
+            });
+        }, 200);
+        const sceneEl = document.querySelector('a-scene');
+
+        const level = new URLSearchParams(window.location.search).get('level') || 'hard';
+        const mindCfg = MIND_FILES[level] || MIND_FILES.hard;
+        sceneEl.setAttribute('mindar-image',
+            'imageTargetSrc: ' + mindCfg.src +
+            '; autoStart: true; maxTrack: ' + mindCfg.maxTrack +
+            '; uiLoading: no; uiScanning: no; uiError: no;');
+        console.log('[JS] level=' + level + ' mind=' + mindCfg.src + ' maxTrack=' + mindCfg.maxTrack);
+
+        function shapeDefById(id) { return SHAPE_DEFS.find(d => d.id === id); }
+
+        function renderSilhouettes(shapeIds) {
+            const container = document.getElementById('silhouettes');
+            container.innerHTML = '';
+            shapeIds.forEach(id => {
+                const def = shapeDefById(id);
+                const chip = document.createElement('span');
+                chip.className = 'chip';
+                const span = document.createElement('span');
+                span.className = 'silhouette';
+                span.textContent = def ? def.emoji : '?';
+                chip.appendChild(span);
+                container.appendChild(chip);
+            });
+        }
+
+        // ✅ Handles both primitives and GLBs
+        function buildShape(def) {
+            const el = document.createElement('a-entity');
+            const size = def.size || 1;
+            el.setAttribute('scale', size + ' ' + size + ' ' + size);
+
+            switch (def.type) {
+                case 'sphere':
+                    el.innerHTML = '<a-sphere radius="0.06" color="' + def.color + '"></a-sphere>';
+                    break;
+                case 'cone':
+                    el.innerHTML = '<a-cone radius-bottom="0.07" radius-top="0" height="0.12" color="' + def.color + '"></a-cone>';
+                    break;
+                case 'box':
+                    el.innerHTML = '<a-box width="0.1" height="0.1" depth="0.1" color="' + def.color + '"></a-box>';
+                    break;
+                case 'octahedron':
+                    el.innerHTML = '<a-octahedron radius="0.07" color="' + def.color + '"></a-octahedron>';
+                    break;
+                case 'torus':
+                    el.innerHTML = '<a-torus radius="0.06" radius-tubular="0.02" color="' + def.color + '"></a-torus>';
+                    break;
+                case 'cylinder':
+                    el.innerHTML = '<a-cylinder radius="0.04" height="0.12" color="' + def.color + '"></a-cylinder>';
+                    break;
+            }
+            el.setAttribute('position', '0 ' + def.y + ' 0');
+            return el;
+        }
+
+        function clearAllShapes() {
+            for (let i = 0; i < 5; i++) {
+                const el = document.getElementById('shape' + i);
+                if (el) { el.innerHTML = ''; el.setAttribute('visible', 'false'); }
+            }
+            document.querySelectorAll('.result-ring').forEach(r => r.remove());
+        }
+
+        function showActiveShapes() {
+            S.assignment.forEach(item => {
+                const el = document.getElementById('shape' + item.target);
+                if (el) el.setAttribute('visible', 'true');
+            });
+            S.showing = true;
+        }
+
+        function hideActiveShapes() {
+            S.assignment.forEach(item => {
+                const el = document.getElementById('shape' + item.target);
+                if (el) el.setAttribute('visible', 'false');
+            });
+            S.showing = false;
+        }
+
+        function collectCardPositions() {
+            const results = [];
+            S.correctOrder.forEach(t => {
+                if (tracked[t]) {
+                    const worldPos = new AFRAME.THREE.Vector3();
+                    document.getElementById('target' + t).object3D.getWorldPosition(worldPos);
+                    results.push({ targetIndex: t, worldX: worldPos.x, detected: true });
+                } else {
+                    results.push({ targetIndex: t, worldX: null, detected: false });
+                }
+            });
+            return results;
+        }
+
+        window.receiveFromFlutter = function (command, data) {
+            switch (command) {
+                case 'startRound': {
+                    S.sequence = data.sequence || [];
+                    S.assignment = data.assignment || [];
+                    S.correctOrder = data.correctOrder || [];
+                    S.hideSequence = data.hideSequenceAfterPeek === true;
+
+                    clearAllShapes();
+                    S.assignment.forEach(item => {
+                        const def = shapeDefById(item.shape);
+                        const marker = document.getElementById('shape' + item.target);
+                        if (def && marker) marker.appendChild(buildShape(def));
+                    });
+
+                    renderSilhouettes(S.sequence);
+                    setStatus('Round ready');
+                    Bridge.send('roundReady');
+
+                    if (TEST_MODE) showActiveShapes();
+                    break;
+                }
+
+                case 'showPeek': {
+                    showActiveShapes();
+                    setStatus('Look! Memorize...');
+                    if (!TEST_MODE) {
+                        setTimeout(() => {
+                            hideActiveShapes();
+                            if (S.hideSequence) {
+                                renderSilhouettes([]);
+                                setStatus('From memory now!');
+                            }
+                            Bridge.send('peekEnded');
+                        }, (data.durationSeconds || 4) * 1000);
+                    } else {
+                        Bridge.send('peekEnded');
+                    }
+                    break;
+                }
+
+                case 'check': {
+                    // ✅ حكم لحظي فقط — لا ذاكرة، لا استدلال، لا تخمين
+                    const cards = [];
+                    let missing = 0;
+
+                    S.correctOrder.forEach(t => {
+                        if (tracked[t]) {
+                            cards.push({ targetIndex: t, worldX: worldXOf(t) });
+                        } else {
+                            missing++;
+                        }
+                    });
+
+                    if (missing > 0) {
+                        const attempt = (data && data.attempt) ? data.attempt : 1;
+                        if (attempt <= 3) {
+                            // 🤫 إعادة محاولة صامتة (تمتص الاختفاء اللحظي)
+                            setStatus('Hold steady... (' + attempt + '/3)');
+                            setTimeout(() => {
+                                window.receiveFromFlutter('check', { attempt: attempt + 1 });
+                            }, 500);
+                            return;
+                        }
+                        // بعد 1.5 ثانية لسه ناقصة → بدون حكم، بدون خصم
+                        Bridge.send('checkResult', { allDetected: false, missingCount: missing });
+                        setStatus(missing + ' card(s) not visible — show ALL cards');
+                        return;
+                    }
+
+                    cards.sort((a, b) => a.worldX - b.worldX);
+                    Bridge.send('checkResult', {
+                        allDetected: true,
+                        patientOrder: cards.map(c => c.targetIndex),
+                    });
+                    setStatus('Checking...');
+                    break;
+                }
+
+                case 'showResults': {
+                    renderSilhouettes(S.sequence); // Show sequence again for feedback
+                    showActiveShapes();
+                    (data.results || []).forEach(res => {
+                        const marker = document.getElementById('shape' + res.targetIndex);
+                        if (!marker) return;
+                        const ring = document.createElement('a-torus');
+                        ring.setAttribute('radius', '0.09');
+                        ring.setAttribute('radius-tubular', '0.008');
+                        ring.setAttribute('color', res.correct ? '#FFFFFF' : '#FF0000');
+                        ring.setAttribute('position', '0 0.10 0');
+                        ring.setAttribute('rotation', '90 0 0');
+                        ring.classList.add('result-ring');
+                        marker.appendChild(ring);
+                    });
+                    // ✅ النتائج تفضل ظاهرة لحد ما زر Next يبعت 'reset'
+                    setStatus((data.accuracyPercent || 0) + '% correct — press Next');
+                    break;
+                }
+
+                case 'reset': {
+                    clearAllShapes();
+                    S.sequence = []; S.assignment = []; S.correctOrder = [];
+                    document.getElementById('silhouettes').innerHTML = '';
+                    setStatus('Reset');
+                    break;
+                }
+            }
+        };
+
+        sceneEl.addEventListener('loaded', () => {
+            for (let i = 0; i < 5; i++) {
+                const t = document.getElementById('target' + i);
+                if (!t) continue;
+                t.addEventListener('targetFound', () => { tracked[i] = true; });
+                t.addEventListener('targetLost', () => { tracked[i] = false; });
+            }
+            console.log('[JS] scene loaded, tracking listeners ready');
+        });
+
+        sceneEl.addEventListener('arReady', () => {
+            setStatus('AR Ready');
+            Bridge.send('arReady');
+            // ✅ Send camera info now that Flutter channel is ready
+            if (window.__cameraInfo) {
+                console.log('[CAMERA] Sending info to Flutter');
+                Bridge.send('cameraInfo', window.__cameraInfo);
+            }
+        });
+
+        sceneEl.addEventListener('arError', () => {
+            setStatus('AR Error');
+            Bridge.send('arError', { message: 'AR Error' });
+        });
+    </script>
+</body>
+
+</html>

@@ -4,6 +4,55 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="./aframe.min.js"></script>
+    <script>
+        // ===== Camera Quality Hook =====
+        (function () {
+            window.__cameraInfo = null;  // مكان التخزين
+
+            const origGM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+            navigator.mediaDevices.getUserMedia = async function (constraints) {
+                console.log('[CAMERA] getUserMedia called, injecting constraints...');
+
+                const injected = {
+                    ...constraints,
+                    video: {
+                        ...(typeof constraints.video === 'object' ? constraints.video : {}),
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        advanced: [
+                            { focusMode: 'continuous' },
+                            { exposureMode: 'continuous' },
+                            { whiteBalanceMode: 'continuous' },
+                        ],
+                    },
+                };
+
+                try {
+                    const stream = await origGM(injected);
+                    const track = stream.getVideoTracks()[0];
+                    const settings = track.getSettings();
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+                    window.__cameraInfo = {
+                        requested: { width: 1920, height: 1080 },
+                        actual: { width: settings.width, height: settings.height },
+                        fps: settings.frameRate,
+                        focusMode: settings.focusMode || 'n/a',
+                        supportedFocus: caps.focusMode || 'n/a',
+                        exposureMode: settings.exposureMode || 'n/a',
+                        label: track.label,
+                    };
+
+                    console.log('[CAMERA] ✅ Info captured:', window.__cameraInfo);
+                    return stream;
+                } catch (e) {
+                    console.error('[CAMERA] ❌ Error:', e);
+                    throw e;
+                }
+            };
+            console.log('[CAMERA] ✅ getUserMedia hook installed');
+        })();
+    </script>
     <script src="./mindar-image-aframe.prod.js" type="module"></script>
     <style>
         body {
@@ -35,14 +84,14 @@
     <div id="status">Status: starting…</div>
     <div class="example-container">
         <a-scene
-            mindar-image="imageTargetSrc: ./targets2.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+            mindar-image="imageTargetSrc: ./markers/cupshuffle_marker.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
             embedded color-space="sRGB"
             renderer="colorManagement: true, physicallyCorrectLights, shadowMap.enabled: true"
             vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
 
             <a-assets>
-                <a-asset-item id="cupModel" src="./cup.glb"></a-asset-item>
-                <a-asset-item id="ballModel" src="./gem.glb"></a-asset-item>
+                <a-asset-item id="cupModel" src="./shapes/cup.glb"></a-asset-item>
+                <a-asset-item id="ballModel" src="./shapes/gem.glb"></a-asset-item>
             </a-assets>
 
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -307,6 +356,14 @@
             console.log('[JS] arReady fired, sending to Flutter');
             setStatus('AR Ready');
             Bridge.send('arReady');
+
+            // ✅ نرسل الـ camera info دلوقتي (FlutterApp جاهز)
+            if (window.__cameraInfo) {
+                console.log('[CAMERA] Sending info to Flutter');
+                Bridge.send('cameraInfo', window.__cameraInfo);
+            } else {
+                console.warn('[CAMERA] No info captured yet');
+            }
         });
 
         sceneEl.addEventListener('arError', () => {

@@ -194,7 +194,7 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
           debugPrint('[WEBVIEW] Resource error: ${error.description}');
         },
       ))
-      ..loadRequest(Uri.parse('http://127.0.0.1:$port/index.html'));
+      ..loadRequest(Uri.parse('http://127.0.0.1:$port/cupshuffle_game.html'));
 
     if (controller.platform is AndroidWebViewController) {
       final androidController = controller.platform as AndroidWebViewController;
@@ -216,6 +216,18 @@ class _CupShuffleGameState extends State<CupShuffleGame> {
       final payload = data['data'] ?? {};
 
       switch (event) {
+        case 'cameraInfo':
+          debugPrint('═══════════════════════════════════════');
+          debugPrint('📷 CAMERA INFO');
+          debugPrint('  Requested : ${payload['requested']}');
+          debugPrint('  Actual    : ${payload['actual']}');
+          debugPrint('  FPS       : ${payload['fps']}');
+          debugPrint(
+              '  Focus     : ${payload['focusMode']} (supported: ${payload['supportedFocus']})');
+          debugPrint('  Exposure  : ${payload['exposureMode']}');
+          debugPrint('  Label     : ${payload['label']}');
+          debugPrint('═══════════════════════════════════════');
+          break;
         case 'arReady':
           setState(() {
             _phase = GamePhase.ready;
