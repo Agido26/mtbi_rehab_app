@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/patient.dart';
+
 import '../models/game_result.dart';
+import '../models/patient.dart';
+import '../services/auth_service.dart';
 import '../services/game_data_service.dart';
 import '../services/metrics_analyzer.dart';
 import '../widgets/charts/spatial_error_chart.dart';
@@ -10,6 +12,7 @@ import '../widgets/charts/trend_line_chart.dart';
 class ClinicalReportScreen extends StatefulWidget {
   final Patient patient;
   const ClinicalReportScreen({super.key, required this.patient});
+
   @override
   State<ClinicalReportScreen> createState() => _ClinicalReportScreenState();
 }
@@ -20,8 +23,11 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
   Map<GameType, List<GameResult>> _byGame = {};
   bool _loading = true;
   late final TabController _tabController;
+
+  // حالة الفلترة وعرض المزيد
   int _limitSM = 6;
   int _limitCS = 6;
+  String _csFilter = 'all'; // 'all', 'easy', 'medium', 'hard'
 
   @override
   void initState() {
@@ -55,11 +61,9 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
 
     final shapeMatch = _byGame[GameType.shapeMatch] ?? [];
     final cupShuffle = _byGame[GameType.cupShuffle] ?? [];
+
     final sm = shapeMatch.isNotEmpty
         ? MetricsAnalyzer.analyzeShapeMatch(shapeMatch)
-        : null;
-    final cs = cupShuffle.isNotEmpty
-        ? MetricsAnalyzer.analyzeCupShuffle(cupShuffle)
         : null;
 
     return Scaffold(
@@ -77,24 +81,22 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
               icon: const Icon(Icons.extension, size: 20),
               text: 'Shape Match${sm != null ? ' (${sm.sessionsCount})' : ''}',
             ),
-            Tab(
-              icon: const Icon(Icons.local_drink, size: 20),
-              text: 'Cup Shuffle${cs != null ? ' (${cs.sessionsCount})' : ''}',
+            const Tab(
+              icon: Icon(Icons.local_drink, size: 20),
+              text: 'Cup Shuffle',
             ),
           ],
         ),
       ),
       body: Column(
         children: [
-          // Header ثابت في كل التابّات
           _buildPatientHeader(),
-          // محتوى التابّات
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
                 _buildShapeMatchTab(sm, shapeMatch),
-                _buildCupShuffleTab(cs, cupShuffle),
+                _buildCupShuffleTab(cupShuffle),
               ],
             ),
           ),
@@ -104,10 +106,9 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
   }
 
   // ============================================================
-  // HEADER (ظاهر في كل التابّات)
+  // HEADER
   // ============================================================
   Widget _buildPatientHeader() {
-    final patient = widget.patient;
     final sm = _byGame[GameType.shapeMatch];
     final cs = _byGame[GameType.cupShuffle];
     final smM = sm != null && sm.isNotEmpty
@@ -130,12 +131,12 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  patient?.username ?? 'Patient',
+                  widget.patient.username,
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  'ID: ${patient?.id ?? '-'} • SM: ${smM?.sessionsCount ?? 0} • CS: ${csM?.sessionsCount ?? 0}',
+                  'ID: ${widget.patient.id} • SM: ${smM?.sessionsCount ?? 0} • CS: ${csM?.sessionsCount ?? 0}',
                   style: TextStyle(color: Colors.grey[700], fontSize: 12),
                 ),
               ],
@@ -179,106 +180,150 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
         ]),
         const SizedBox(height: 16),
         TrendLineChart(
-          points: sm.accuracyTrend,
-          title: 'Accuracy Over Sessions',
-          isPercent: true,
-          color: Colors.purple,
-          unitLabel: 'Pattern recognition + visual attention',
-        ),
+            points: sm.accuracyTrend,
+            title: 'Accuracy Over Sessions',
+            isPercent: true,
+            color: Colors.purple,
+            unitLabel: 'Pattern recognition + visual attention'),
         const SizedBox(height: 12),
         TrendLineChart(
-          points: sm.avgTimeTrend,
-          title: 'Avg Round Time (sec)',
-          color: Colors.teal,
-          unitLabel: 'Lower = faster cognitive processing',
-        ),
+            points: sm.avgTimeTrend,
+            title: 'Avg Round Time (sec)',
+            color: Colors.teal,
+            unitLabel: 'Lower = faster cognitive processing'),
         const SizedBox(height: 12),
         TrendLineChart(
-          points: sm.peeksTrend,
-          title: 'Peeks Per Session',
-          color: Colors.orange,
-          unitLabel: 'Working memory dependence — decreasing = stronger memory',
-        ),
+            points: sm.peeksTrend,
+            title: 'Peeks Per Session',
+            color: Colors.orange,
+            unitLabel:
+                'Working memory dependence — decreasing = stronger memory'),
         const SizedBox(height: 12),
-        _buildRecentSessions(
-          'Recent Sessions — Shape Match',
-          raw,
-          limit: _limitSM,
-          onShowMore: () => setState(() => _limitSM += 6),
-        ),
+        _buildRecentSessions('Recent Sessions — Shape Match', raw,
+            limit: _limitSM, onShowMore: () => setState(() => _limitSM += 6)),
       ],
     );
   }
 
   // ============================================================
-  // TAB 2: CUP SHUFFLE
+  // TAB 2: CUP SHUFFLE (مع الفلترة حسب الصعوبة)
   // ============================================================
-  Widget _buildCupShuffleTab(CupShuffleMetrics? cs, List<GameResult> raw) {
-    if (cs == null) return _buildNoData('Cup Shuffle');
+  Widget _buildCupShuffleTab(List<GameResult> raw) {
+    // 1. فلترة البيانات بناءً على الاختيار
+    final filteredRaw = _csFilter == 'all'
+        ? raw
+        : raw
+            .where((r) =>
+                (r.metadata?['difficulty'] as String?)?.toLowerCase() ==
+                _csFilter)
+            .toList();
+
+    // 2. حساب المقاييس للبيانات المفلترة فقط
+    final cs = filteredRaw.isNotEmpty
+        ? MetricsAnalyzer.analyzeCupShuffle(filteredRaw)
+        : null;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _buildSectionTitle('🎯 Visual Attention & Processing Speed'),
-        _buildInsightBox(_cupShuffleInsights(cs)),
+        _buildInsightBox(cs != null
+            ? _cupShuffleInsights(cs)
+            : ['No data available for this difficulty filter.']),
         const SizedBox(height: 12),
-        _buildQuickStatsRow([
-          _buildStatChip('Avg Accuracy',
-              '${(cs.avgAccuracy * 100).toStringAsFixed(0)}%', Colors.blue),
-          _buildStatChip('Avg RT', '${cs.avgResponseTime.toStringAsFixed(2)}s',
-              Colors.green),
-          _buildStatChip('ISV', cs.intraSessionVariability.toStringAsFixed(1),
-              cs.intraSessionVariability > 20 ? Colors.orange : Colors.green),
-        ]),
+
+        // ✅ أزرار الفلترة للشارتات
+        _buildDifficultyFilter(
+            _csFilter, (val) => setState(() => _csFilter = val)),
         const SizedBox(height: 16),
-        TrendLineChart(
-          points: cs.accuracyTrend,
-          title: 'Accuracy Over Sessions',
-          isPercent: true,
-          color: Colors.blue,
-        ),
-        const SizedBox(height: 12),
-        TrendLineChart(
-          points: cs.responseTimeTrend,
-          title: 'Response Time (sec)',
-          color: Colors.green,
-          unitLabel: 'Processing speed — lower = faster',
-        ),
-        const SizedBox(height: 12),
-        _buildISVCard(cs.intraSessionVariability),
-        const SizedBox(height: 12),
-        _buildFatigueCard(cs),
-        const SizedBox(height: 12),
-        TrendLineChart(
-          points: cs.fatigueIndexTrend,
-          title: 'Fatigue Index Trend',
-          color: Colors.deepOrange,
-          unitLabel:
-              'FI = avg RT (2nd half) ÷ avg RT (1st half) — >1.0 = within-session slowing',
-        ),
-        const SizedBox(height: 12),
-        SpatialErrorChart(errors: cs.spatialErrors),
-        const SizedBox(height: 12),
-        _buildRecentSessions(
-          'Recent Sessions — Cup Shuffle',
-          raw,
-          limit: _limitCS,
-          onShowMore: () => setState(() => _limitCS += 6),
-        ),
+
+        if (cs == null)
+          _buildNoData('Selected Difficulty')
+        else ...[
+          _buildQuickStatsRow([
+            _buildStatChip('Avg Accuracy',
+                '${(cs.avgAccuracy * 100).toStringAsFixed(0)}%', Colors.blue),
+            _buildStatChip('Avg RT',
+                '${cs.avgResponseTime.toStringAsFixed(2)}s', Colors.green),
+            _buildStatChip('ISV', cs.intraSessionVariability.toStringAsFixed(1),
+                cs.intraSessionVariability > 20 ? Colors.orange : Colors.green),
+          ]),
+          const SizedBox(height: 16),
+          TrendLineChart(
+              points: cs.accuracyTrend,
+              title: 'Accuracy Over Sessions ($_csFilter)',
+              isPercent: true,
+              color: Colors.blue),
+          const SizedBox(height: 12),
+          TrendLineChart(
+              points: cs.responseTimeTrend,
+              title: 'Response Time (sec) ($_csFilter)',
+              color: Colors.green,
+              unitLabel: 'Processing speed — lower = faster'),
+          const SizedBox(height: 12),
+          _buildISVCard(cs.intraSessionVariability),
+          const SizedBox(height: 12),
+          _buildFatigueCard(cs),
+          const SizedBox(height: 12),
+          TrendLineChart(
+              points: cs.fatigueIndexTrend,
+              title: 'Fatigue Index Trend ($_csFilter)',
+              color: Colors.deepOrange,
+              unitLabel:
+                  'FI = avg RT (2nd half) ÷ avg RT (1st half) — >1.0 = within-session slowing'),
+          const SizedBox(height: 12),
+          SpatialErrorChart(errors: cs.spatialErrors),
+          const SizedBox(height: 12),
+          // ✅ قائمة الجلسات تعكس أيضاً الفلتر المختار
+          _buildRecentSessions('Recent Sessions — Cup Shuffle', filteredRaw,
+              limit: _limitCS, onShowMore: () => setState(() => _limitCS += 6)),
+        ]
       ],
     );
   }
 
   // ============================================================
-  // Shared widgets
+  // WIDGETS مشتركة
   // ============================================================
+  Widget _buildDifficultyFilter(
+      String selected, ValueChanged<String> onChanged) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: ['all', 'easy', 'medium', 'hard'].map((d) {
+          final isSelected = selected == d;
+          final color = d == 'all'
+              ? Colors.grey
+              : (d == 'easy'
+                  ? Colors.green
+                  : (d == 'medium' ? Colors.orange : Colors.red));
+          final label = d[0].toUpperCase() + d.substring(1);
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilterChip(
+              label: Text(label),
+              selected: isSelected,
+              selectedColor: color.withOpacity(0.15),
+              checkmarkColor: color,
+              labelStyle: TextStyle(
+                color: isSelected ? color : Colors.grey[700],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              onSelected: (_) => onChanged(d),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo),
-      ),
+      child: Text(title,
+          style: const TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
     );
   }
 
@@ -287,10 +332,9 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.shade200),
-      ),
+          color: Colors.amber.shade50,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.amber.shade200)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -298,33 +342,29 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
               style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           ...insights.map((i) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('• $i', style: const TextStyle(fontSize: 13)),
-              )),
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text('• $i', style: const TextStyle(fontSize: 13)))),
         ],
       ),
     );
   }
 
   Widget _buildQuickStatsRow(List<Widget> chips) {
-    return Row(
-      children: [
-        for (int i = 0; i < chips.length; i++) ...[
-          Expanded(child: chips[i]),
-          if (i < chips.length - 1) const SizedBox(width: 8),
-        ],
-      ],
-    );
+    return Row(children: [
+      for (int i = 0; i < chips.length; i++) ...[
+        Expanded(child: chips[i]),
+        if (i < chips.length - 1) const SizedBox(width: 8)
+      ]
+    ]);
   }
 
   Widget _buildStatChip(String label, String value, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.3))),
       child: Column(
         children: [
           Text(value,
@@ -357,9 +397,8 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
                   const Text('Intra-Session Variability (ISV)',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   Text(
-                    '$level — ${isv.toStringAsFixed(1)} (marker of cognitive stability in mTBI)',
-                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                  ),
+                      '$level — ${isv.toStringAsFixed(1)} (marker of cognitive stability in mTBI)',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 12)),
                 ],
               ),
             ),
@@ -388,9 +427,8 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
                   const Text('Cognitive Fatigue (latest session)',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   Text(
-                    '$level — FI ${fi.toStringAsFixed(2)} (avg ${cs.avgFatigueIndex.toStringAsFixed(2)})',
-                    style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                  ),
+                      '$level — FI ${fi.toStringAsFixed(2)} (avg ${cs.avgFatigueIndex.toStringAsFixed(2)})',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 12)),
                 ],
               ),
             ),
@@ -400,16 +438,13 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
     );
   }
 
-  Widget _buildRecentSessions(
-    String title,
-    List<GameResult> results, {
-    required int limit,
-    required VoidCallback onShowMore,
-  }) {
+  // ✅ الإصلاح الجذري للـ Overflow: استخدام Column بدلاً من نص واحد طويل
+  Widget _buildRecentSessions(String title, List<GameResult> results,
+      {required int limit, required VoidCallback onShowMore}) {
     final recent = List<GameResult>.from(results)
       ..sort((a, b) => b.playedAt.compareTo(a.playedAt));
     final shown = recent.take(limit).toList();
-    final hasMore = recent.length > limit; // ✅ safe check
+    final hasMore = recent.length > limit;
 
     return Card(
       child: Padding(
@@ -420,7 +455,7 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(title,
+                Text("Recent Sessions",
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.bold)),
                 Text('${recent.length} total',
@@ -430,25 +465,19 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
             const SizedBox(height: 8),
             if (shown.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text('No sessions yet',
-                    style: TextStyle(color: Colors.grey[500])),
-              )
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No sessions yet',
+                      style: TextStyle(color: Colors.grey[500])))
             else
               ...shown.map((r) {
-                final meta = r.metadata ?? {};
-                final extra = <String>[];
-                if (meta['difficulty'] != null) {
-                  final d = meta['difficulty'].toString();
-                  extra.add(d == 'easy' ? 'Standard' : d); // ✅ rename display
-                }
-                if (meta['peeksUsed'] != null) {
-                  extra.add('peeks: ${meta['peeksUsed']}');
-                }
-                if (meta['avgResponseTime'] != null) {
-                  extra.add(
-                      'RT: ${(meta['avgResponseTime'] as num).toStringAsFixed(2)}s');
-                }
+                final diff =
+                    (r.metadata?['difficulty'] as String?)?.toLowerCase() ?? '';
+                final diffLabel = diff == 'easy'
+                    ? 'Easy'
+                    : (diff == 'medium'
+                        ? 'Medium'
+                        : (diff == 'hard' ? 'Hard' : ''));
+
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -459,14 +488,28 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
                     style: const TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w600),
                   ),
-                  subtitle: Text(
-                    [
-                      'Score ${r.score}',
-                      'Acc ${(r.accuracy * 100).toStringAsFixed(0)}%',
-                      '${r.durationSeconds}s',
-                      ...extra,
-                    ].join(' • '),
-                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  // ✅ هنا الحل: تقسيم النص إلى سطرين قصيرين مع ellipsis يمنع الـ Overflow تماماً
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Score: ${r.score} • Acc: ${(r.accuracy * 100).toStringAsFixed(0)}% • ${r.durationSeconds}s',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.w500),
+                      ),
+                      if (diffLabel.isNotEmpty)
+                        Text(
+                          'Difficulty: $diffLabel',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              TextStyle(fontSize: 10, color: Colors.grey[600]),
+                        ),
+                    ],
                   ),
                 );
               }),
@@ -488,7 +531,7 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
     final insights = <String>[];
     if (sm.improvementPct > 10) {
       insights.add(
-          'Strong improvement (+${sm.improvementPct.toStringAsFixed(0)}%) — working memory responding well to training.');
+          'Strong improvement (+${sm.improvementPct.toStringAsFixed(0)}%) — working memory responding well.');
     } else if (sm.improvementPct < -5) {
       insights.add(
           'Accuracy declining — consider adjusting difficulty or session length.');
@@ -496,14 +539,16 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
       insights.add(
           'Stable performance — may need increased cognitive load for further gains.');
     }
+
     if (sm.fatigueScore < -0.15) {
       insights.add(
-          '⚠️ Significant intra-session fatigue — recommend shorter sessions or more breaks.');
+          '⚠️ Significant intra-session fatigue — recommend shorter sessions.');
     } else if (sm.fatigueScore < -0.05) {
       insights.add('Mild fatigue detected — monitor session duration.');
     } else {
       insights.add('Good endurance across sessions.');
     }
+
     final lastPeeks = sm.peeksTrend.isNotEmpty ? sm.peeksTrend.last.y : 0;
     if (lastPeeks > 0) {
       insights.add(
@@ -520,6 +565,7 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
       insights.add(
           '⚠️ Left-side error bias (${cs.spatialBiasRatio.toStringAsFixed(1)}x) — consider formal spatial attention assessment.');
     }
+
     if (cs.intraSessionVariability > 30) {
       insights.add(
           'High response variability — common in mTBI; suggests fluctuating cognitive stability.');
@@ -528,16 +574,10 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
     } else {
       insights.add('Consistent response times — stable cognitive performance.');
     }
-    if (cs.avgResponseTime > 3.0) {
-      insights.add(
-          'Slower average response (${cs.avgResponseTime.toStringAsFixed(1)}s) — processing speed focus recommended.');
-    } else if (cs.avgResponseTime < 1.5) {
-      insights.add(
-          'Fast responses (${cs.avgResponseTime.toStringAsFixed(1)}s) with ${cs.avgAccuracy >= 0.7 ? 'good accuracy' : 'lower accuracy — may be sacrificing accuracy for speed'}.');
-    }
+
     if (cs.latestFatigueIndex > 1.25) {
       insights.add(
-          '⚠️ High cognitive fatigue (FI ${cs.latestFatigueIndex.toStringAsFixed(2)}) — responses slow markedly within sessions; consider shorter sessions or more breaks.');
+          '⚠️ High cognitive fatigue (FI ${cs.latestFatigueIndex.toStringAsFixed(2)}) — responses slow markedly within sessions.');
     } else if (cs.latestFatigueIndex > 1.05) {
       insights.add(
           'Mild within-session slowing (FI ${cs.latestFatigueIndex.toStringAsFixed(2)}) — monitor the fatigue trend.');
@@ -560,11 +600,9 @@ class _ClinicalReportScreenState extends State<ClinicalReportScreen>
             Text('No $gameName data yet',
                 style: TextStyle(fontSize: 16, color: Colors.grey[600])),
             const SizedBox(height: 4),
-            Text(
-              'Data will appear after the patient completes sessions',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[500]),
-            ),
+            Text('Data will appear after the patient completes sessions',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[500])),
           ],
         ),
       ),
