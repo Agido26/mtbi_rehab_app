@@ -98,6 +98,8 @@ class GameCard extends StatelessWidget {
         return Icons.visibility;
       case GameType.shapeMatch: // ADD THIS
         return Icons.interests; // or any icon you like
+      case GameType.maze:
+        return Icons.map; // or any icon you like
     }
   }
 }

@@ -4,7 +4,9 @@ enum GameType {
   shapeMatch(
     'Shape Match',
     'Pattern recognition and visual attention',
-  ); // ADD THIS
+  ), // ADD THIS
+  maze('Maze Runner',
+      'Improve spatial navigation and fine motor control'); // ✅ الجديد
 
   final String displayName;
   final String description;

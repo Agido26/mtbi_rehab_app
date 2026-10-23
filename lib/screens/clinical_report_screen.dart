@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 
 import '../models/game_result.dart';
 import '../models/patient.dart';
-import '../services/auth_service.dart';
 import '../services/game_data_service.dart';
 import '../services/metrics_analyzer.dart';
 import '../widgets/charts/spatial_error_chart.dart';

@@ -23,6 +23,28 @@ class MetricsAnalyzer {
     );
   }
 
+  static MazeMetrics analyzeMaze(List<GameResult> results) {
+    if (results.isEmpty) return MazeMetrics.empty();
+
+    int completed = 0;
+    double totalResets = 0;
+    double totalTime = 0;
+
+    for (final r in results) {
+      final meta = r.metadata ?? {};
+      if (meta['completed'] == true) completed++;
+      totalResets += (meta['resetCount'] as num?)?.toDouble() ?? 0;
+      totalTime += r.durationSeconds;
+    }
+
+    return MazeMetrics(
+      sessionsCount: results.length,
+      completionRate: results.isEmpty ? 0 : completed / results.length,
+      avgTimeSeconds: totalTime / results.length,
+      avgResets: totalResets / results.length,
+    );
+  }
+
   /// ============================================================
   /// SHAPE MATCH ANALYSIS
   /// ============================================================
@@ -276,6 +298,27 @@ class ShapeMatchMetrics {
         peeksTrend: [],
         fatigueScore: 0,
         improvementPct: 0,
+      );
+}
+
+class MazeMetrics {
+  final int sessionsCount;
+  final double completionRate; // نسبة إكمال المتاهات
+  final double avgTimeSeconds;
+  final double avgResets; // متوسط مرات إعادة التعيين (مؤشر الإحباط/الدقة)
+
+  MazeMetrics({
+    required this.sessionsCount,
+    required this.completionRate,
+    required this.avgTimeSeconds,
+    required this.avgResets,
+  });
+
+  factory MazeMetrics.empty() => MazeMetrics(
+        sessionsCount: 0,
+        completionRate: 0,
+        avgTimeSeconds: 0,
+        avgResets: 0,
       );
 }
 

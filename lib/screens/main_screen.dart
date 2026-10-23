@@ -5,9 +5,9 @@ import '../widgets/common/app_scaffold.dart';
 import '../widgets/game_card.dart';
 import 'dashboard_screen.dart';
 import 'games/shape_match/shape_match_level_select.dart';
-import 'games/game_2_screen.dart';
 import 'login_screen.dart';
 import 'games/cup_shuffle_mode_screen.dart';
+import 'games/maze/maze_level_select.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -41,115 +41,126 @@ class MainScreen extends StatelessWidget {
           tooltip: 'Logout',
         ),
       ],
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Welcome banner
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.primary,
-                  Theme.of(context).colorScheme.secondary,
+      // ✅ الحل: استخدام SingleChildScrollView لمنع الـ Overflow نهائياً
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome banner
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.secondary,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.person, size: 32, color: Colors.black54),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Welcome back,',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.8),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          patient?.username ?? 'Patient',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.person, size: 32, color: Colors.black54),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Welcome back,',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.8),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        patient?.username ?? 'Patient',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: Text(
-              'Choose a Game',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(
+                'Choose a Game',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
 
-          // Game cards
-          GameCard(
-            gameType: GameType.cupShuffle,
-            onTap: () => _navigateToGame(context, const CupShuffleModeScreen()),
-          ),
-          GameCard(
-            gameType: GameType.visualScanning,
-            onTap: () => _navigateToGame(context, const Game2Screen()),
-            isLocked: true,
-          ),
-          GameCard(
-            gameType: GameType.shapeMatch,
-            onTap: () =>
-                _navigateToGame(context, const ShapeMatchLevelSelect()),
-            isLocked: false,
-          ),
+            // Game cards
+            GameCard(
+              gameType: GameType.cupShuffle,
+              onTap: () =>
+                  _navigateToGame(context, const CupShuffleModeScreen()),
+            ),
 
-          const Spacer(),
+            GameCard(
+              gameType: GameType.shapeMatch,
+              onTap: () =>
+                  _navigateToGame(context, const ShapeMatchLevelSelect()),
+              isLocked: false,
+            ),
+            // ✅ كارت لعبة المتاهة الجديدة
+            GameCard(
+              gameType: GameType.maze,
+              onTap: () => _navigateToGame(
+                context,
+                const MazeLevelSelect(),
+              ),
+              isLocked: false,
+            ),
 
-          // Dashboard button
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const DashboardScreen()),
-                  );
-                },
-                icon: const Icon(Icons.insights),
-                label: const Text(
-                  'View Progress Dashboard',
-                  style: TextStyle(fontSize: 16),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 24), // ✅ بديل الـ Spacer() الآمن
+
+            // Dashboard button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const DashboardScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.insights),
+                  label: const Text(
+                    'View Progress Dashboard',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16), // ✅ هامش سفلي إضافي للراحة
+          ],
+        ),
       ),
     );
   }
